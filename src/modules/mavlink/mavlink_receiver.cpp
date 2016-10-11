@@ -137,7 +137,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_task_status_change_p2m_pub(nullptr),
 	_task_status_monitor_m2p_pub(nullptr),
 	_task_status_monitor_p2g_pub(nullptr),
-	_vision_num_scan_m2p_pub(nullptr),
+	_vision_num_scan_m2p_pub{},
 	_vision_num_scan_p2g_pub(nullptr),
 	_vision_one_num_get_m2p_pub(nullptr),
 	_vision_one_num_get_p2g_pub(nullptr),
@@ -2394,11 +2394,12 @@ MavlinkReceiver::handle_message_vision_num_scan_m2p(mavlink_message_t *msg)
 	f.board_z= vision_num_scan.board_z;
 	f.board_valid=vision_num_scan.board_valid;
 
-	if(_vision_num_scan_m2p_pub == nullptr){
-		_vision_num_scan_m2p_pub = orb_advertise(ORB_ID(vision_num_scan_m2p), &f);
-	}else{
-		orb_publish(ORB_ID(vision_num_scan_m2p), _vision_num_scan_m2p_pub, &f);
-	}
+	int  num = f.board_num;
+
+	warnx("num form M is: %d",num);
+
+	orb_publish_auto(ORB_ID(vision_num_scan_m2p), &_vision_num_scan_m2p_pub[num], &f, &num, ORB_PRIO_DEFAULT);
+
 }
 void
 MavlinkReceiver::handle_message_vision_num_scan_p2g(mavlink_message_t *msg)

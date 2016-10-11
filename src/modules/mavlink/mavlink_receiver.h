@@ -268,7 +268,7 @@ private:
 	orb_advert_t _task_status_change_p2m_pub;
 	orb_advert_t _task_status_monitor_m2p_pub;
 	orb_advert_t _task_status_monitor_p2g_pub;
-	orb_advert_t _vision_num_scan_m2p_pub;
+	orb_advert_t _vision_num_scan_m2p_pub[10];
 	orb_advert_t _vision_num_scan_p2g_pub;
 	orb_advert_t _vision_one_num_get_m2p_pub;
 	orb_advert_t _vision_one_num_get_p2g_pub;

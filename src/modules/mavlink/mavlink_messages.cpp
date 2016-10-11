@@ -4059,7 +4059,7 @@ public:
 	}
 
 private:
-	MavlinkOrbSubscription *_vision_num_scan_p2g_sub;
+	MavlinkOrbSubscription *_vision_num_scan_p2g_sub[10];
 	uint64_t _vision_num_scan_p2g_time;
 
 	/* do not allow top copying this class */
@@ -4068,28 +4068,36 @@ private:
 
 protected:
 	explicit MavlinkStreamVisionNumScanP2G(Mavlink *mavlink) : MavlinkStream(mavlink),
-		_vision_num_scan_p2g_sub(_mavlink->add_orb_subscription(ORB_ID(vision_num_scan_p2g))),
 		_vision_num_scan_p2g_time(0)
-	{}
+	{
+		for (int index = 0; index < 10; index ++){
+			_vision_num_scan_p2g_sub[index] = _mavlink->add_orb_subscription(ORB_ID(vision_num_scan_p2g),index);
+		}
+	}
 
 	void send(const hrt_abstime t)
 	{
 		struct vision_num_scan_p2g_s vision_num_scan_p2g;
 
-		bool updated = _vision_num_scan_p2g_sub->update(&_vision_num_scan_p2g_time, &vision_num_scan_p2g);
+		for (int index = 0; index < 10; index ++){
+			bool updated = _vision_num_scan_p2g_sub[index]->update(&_vision_num_scan_p2g_time, &vision_num_scan_p2g);
 
-		if (updated) {
+			if (updated) {
 
-			mavlink_vision_num_scan_p2g_t msg;
+				mavlink_vision_num_scan_p2g_t msg;
 
-			msg.timestamp=vision_num_scan_p2g.timestamp;
-			msg.board_num=vision_num_scan_p2g.board_num;
-			msg.board_x=vision_num_scan_p2g.board_x;
-			msg.board_y=vision_num_scan_p2g.board_y;
-			msg.board_z=vision_num_scan_p2g.board_z;
-			msg.board_valid=vision_num_scan_p2g.board_valid;
+				msg.timestamp=vision_num_scan_p2g.timestamp;
+				msg.board_num=vision_num_scan_p2g.board_num;
+				msg.board_x=vision_num_scan_p2g.board_x;
+				msg.board_y=vision_num_scan_p2g.board_y;
+				msg.board_z=vision_num_scan_p2g.board_z;
+				msg.board_valid=vision_num_scan_p2g.board_valid;
 
-			mavlink_msg_vision_num_scan_p2g_send_struct(_mavlink->get_channel(), &msg);
+				warnx("num to ground is: %d",msg.board_num);
+
+				mavlink_msg_vision_num_scan_p2g_send_struct(_mavlink->get_channel(), &msg);
+				usleep(10);
+			}
 		}
 	}
 };

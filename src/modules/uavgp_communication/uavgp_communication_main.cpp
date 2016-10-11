@@ -161,13 +161,15 @@ int uavgp_communication_thread_main(int argc, char *argv[])
 
 	// vision_num_scan
 	// 订阅
-	int _vision_num_scan_sub;
-	_vision_num_scan_sub = orb_subscribe(ORB_ID(vision_num_scan_m2p));
-	struct vision_num_scan_m2p_s vision_num_scan_sub;
+	int _vision_num_scan_sub[10];
+
+	for(int index = 0; index < 10; index++) {
+		_vision_num_scan_sub[index] = orb_subscribe_multi(ORB_ID(vision_num_scan_m2p), index);
+	}
+	struct vision_num_scan_m2p_s vision_num_scan;
 	bool updated_vision_num_scan;
 	// 发布
-	orb_advert_t _vision_num_scan_pub;
-	_vision_num_scan_pub=nullptr;
+	orb_advert_t _vision_num_scan_pub[10] = {};
 	struct vision_num_scan_p2g_s vision_num_scan_pub;
 	memset(&vision_num_scan_pub, 0, sizeof(vision_num_scan_pub));
 
@@ -296,21 +298,22 @@ int uavgp_communication_thread_main(int argc, char *argv[])
 			}
 		}
 		// vision_num_scan
-		orb_check(_vision_num_scan_sub, &updated_vision_num_scan);
-		if (updated_vision_num_scan)
-		{
-			orb_copy(ORB_ID(vision_num_scan_m2p), _vision_num_scan_sub, &vision_num_scan_sub);
-			vision_num_scan_pub.timestamp=hrt_absolute_time();
-			vision_num_scan_pub.board_num=vision_num_scan_sub.board_num;
-			vision_num_scan_pub.board_x=vision_num_scan_sub.board_x;
-			vision_num_scan_pub.board_y=vision_num_scan_sub.board_y;
-			vision_num_scan_pub.board_z=vision_num_scan_sub.board_z;
-			vision_num_scan_pub.board_valid=vision_num_scan_sub.board_valid;
-			if (_vision_num_scan_pub == nullptr) {
-				_vision_num_scan_pub = orb_advertise(ORB_ID(vision_num_scan_p2g), &vision_num_scan_pub);
-				orb_publish(ORB_ID(vision_num_scan_p2g), _vision_num_scan_pub, &vision_num_scan_pub);
-			} else {
-				orb_publish(ORB_ID(vision_num_scan_p2g), _vision_num_scan_pub, &vision_num_scan_pub);
+
+		for (int index = 0; index < 10; index++) {
+			orb_check(_vision_num_scan_sub[index], &updated_vision_num_scan);
+			if (updated_vision_num_scan)
+			{
+				orb_copy(ORB_ID(vision_num_scan_m2p), _vision_num_scan_sub[index], &vision_num_scan);
+				vision_num_scan_pub.timestamp=hrt_absolute_time();
+				vision_num_scan_pub.board_num=vision_num_scan.board_num;
+				vision_num_scan_pub.board_x=vision_num_scan.board_x;
+				vision_num_scan_pub.board_y=vision_num_scan.board_y;
+				vision_num_scan_pub.board_z=vision_num_scan.board_z;
+				vision_num_scan_pub.board_valid=vision_num_scan.board_valid;
+
+				warnx("num form Pix is: %d",vision_num_scan_pub.board_num);
+
+				orb_publish_auto(ORB_ID(vision_num_scan_p2g), &_vision_num_scan_pub[index], &vision_num_scan_pub, &index, ORB_PRIO_DEFAULT);
 			}
 		}
 		// vision_one_num_get

@@ -4,3 +4,25 @@
 
 #start servo control apps, used to control injector
 servo_control start
+
+# liuzhong: gcs<->pix 
+## Mavlink by TELEM1
+mavlink stream  -d /dev/ttyS1 -s FIXED_TARGET_POSITION_G2P -r 2
+mavlink stream  -d /dev/ttyS1 -s FIXED_TARGET_RETURN_P2G -r 2
+mavlink stream  -d /dev/ttyS1 -s YAW_SP_CALCULATED_P2G -r 2
+mavlink stream  -d /dev/ttyS1 -s TASK_STATUS_CHANGE_G2P -r 2
+mavlink stream  -d /dev/ttyS1 -s TASK_STATUS_MONITOR_P2G -r 5
+mavlink stream  -d /dev/ttyS1 -s VISION_NUM_SCAN_P2G -r 15
+mavlink stream  -d /dev/ttyS1 -s VISION_ONE_NUM_GET_P2G -r 5
+mavlink stream  -d /dev/ttyS1 -s OBSTACLE_POSITION_P2G -r 2
+
+# liuzhong: pix<->mavros
+## Mavlink by TELEM2
+mavlink stream  -d /dev/ttyS2 -s FIXED_TARGET_POSITION_P2M -r 10
+mavlink stream  -d /dev/ttyS2 -s FIXED_TARGET_RETURN_M2P -r 10
+mavlink stream  -d /dev/ttyS2 -s YAW_SP_CALCULATED_M2P -r 10
+mavlink stream  -d /dev/ttyS2 -s TASK_STATUS_CHANGE_P2M -r 10
+mavlink stream  -d /dev/ttyS2 -s TASK_STATUS_MONITOR_M2P -r 10
+mavlink stream  -d /dev/ttyS2 -s VISION_NUM_SCAN_M2P -r 15
+mavlink stream  -d /dev/ttyS2 -s VISION_ONE_NUM_GET_M2P -r 10
+mavlink stream  -d /dev/ttyS2 -s OBSTACLE_POSITION_M2P -r 10
