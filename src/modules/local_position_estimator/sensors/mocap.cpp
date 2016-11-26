@@ -1,8 +1,11 @@
 #include <systemlib/mavlink_log.h>
 #include <matrix/math.hpp>
 #include "../BlockLocalPositionEstimator.hpp"
+#include <uORB/topics/lpe_test.h>
 
 extern orb_advert_t mavlink_log_pub;
+static orb_advert_t	lpe_test_pub = nullptr;
+static struct lpe_test_s lpe_test = {};
 
 // required number of samples for sensor
 // to initialize
@@ -110,51 +113,63 @@ void BlockLocalPositionEstimator::mocapCorrect()
 	R(Y_mocap_vy, Y_mocap_vy) = mocap_v_var;
 	R(Y_mocap_vz, Y_mocap_vz) = mocap_v_var;
 
-	// get delayed x and P
-	float t_delay = 0;
-	int i_hist = 0;
-
-	for (i_hist = 1; i_hist < MOCAP_HIST_LEN; i_hist++) {
-		t_delay = 1.0e-6f * (_timeStamp - _tDelay.get(i_hist)(0, 0));
-
-		if (t_delay > _mocap_p_delay.get()) {
-			break;
-		}
-	}
-
-	// if you are 3 steps past the delay you wanted, this
-	// data is probably too old to use
-	if (t_delay > MOCAP_DELAY_MAX) {
-		mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap position delayed data too old: %8.4f", double(t_delay));
-		return;
-	}
-
-	Vector<float, n_x> x0 = _xDelay.get(i_hist);
-
-	for (i_hist = 1; i_hist < MOCAP_VEL_HIST_LEN; i_hist++) {
-		t_delay = 1.0e-6f * (_timeStamp - _tDelay.get(i_hist)(0, 0));
-
-		if (t_delay > _mocap_v_delay.get()) {
-			break;
-		}
-	}
-
-	// if you are 3 steps past the delay you wanted, this
-	// data is probably too old to use
-	if (t_delay > MOCAP_VEL_DELAY_MAX) {
-		mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap velocity delayed data too old: %8.4f", double(t_delay));
-		return;
-	}
-	Vector<float, n_x> x1 = _xDelay.get(i_hist);
-
-	/*only delay velocity observation -bdai<21 Nov 2016>*/
-	for (int i = 0; i < 3; i++) {
-		x0(3 + i) = x1(3 + i);
-	}
+//	// get delayed x and P
+//	float t_delay = 0;
+//	int i_hist = 0;
+//
+//	for (i_hist = 1; i_hist < MOCAP_HIST_LEN; i_hist++) {
+//		t_delay = 1.0e-6f * (_timeStamp - _tDelay.get(i_hist)(0, 0));
+//
+//		if (t_delay > _mocap_p_delay.get()) {
+//			break;
+//		}
+//	}
+//
+//	// if you are 3 steps past the delay you wanted, this
+//	// data is probably too old to use
+//	if (t_delay > MOCAP_DELAY_MAX) {
+//		mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap position delayed data too old: %8.4f", double(t_delay));
+//		return;
+//	}
+//
+//	Vector<float, n_x> x0 = _xDelay.get(i_hist);
+//
+//	for (i_hist = 1; i_hist < MOCAP_VEL_HIST_LEN; i_hist++) {
+//		t_delay = 1.0e-6f * (_timeStamp - _tDelay.get(i_hist)(0, 0));
+//
+//		if (t_delay > _mocap_v_delay.get()) {
+//			break;
+//		}
+//	}
+//
+//	// if you are 3 steps past the delay you wanted, this
+//	// data is probably too old to use
+//	if (t_delay > MOCAP_VEL_DELAY_MAX) {
+//		mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap velocity delayed data too old: %8.4f", double(t_delay));
+//		return;
+//	}
+//	Vector<float, n_x> x1 = _xDelay.get(i_hist);
+//
+//	/*only delay velocity observation -bdai<21 Nov 2016>*/
+//	for (int i = 0; i < 3; i++) {
+//		x0(3 + i) = x1(3 + i);
+//	}
 
 	// residual
 	Matrix<float, n_y_mocap, n_y_mocap> S_I = inv<float, n_y_mocap>((C * _P * C.transpose()) + R);
-	Vector<float, n_y_gps> r = y - C * x0;
+//	Vector<float, n_y_mocap> r = y - C * x0;
+	Vector<float, n_y_mocap> r = y - C * _x;
+
+	for (int i = 0; i<6; i++){
+		lpe_test.r[i] = y(i);
+		lpe_test.x[i] = _x(i);
+	}
+
+	if (lpe_test_pub != nullptr) {
+		orb_publish(ORB_ID(lpe_test), lpe_test_pub, &lpe_test);
+	} else {
+		lpe_test_pub = orb_advertise(ORB_ID(lpe_test), &lpe_test);
+	}
 
 	for (int i = 0; i < 6; i ++) {
 		_pub_innov.get().vel_pos_innov[i] = r(i);
@@ -163,10 +178,11 @@ void BlockLocalPositionEstimator::mocapCorrect()
 
 	// fault detection
 	float beta = (r.transpose() * (S_I * r))(0, 0);
+	beta = 0.0f;
 
 	if (beta > BETA_TABLE[n_y_mocap]) {
 		if (_mocapFault < FAULT_MINOR) {
-			//mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap fault, beta %5.2f", double(beta));
+			mavlink_and_console_log_info(&mavlink_log_pub, "[lpe] mocap fault, beta %5.2f", double(beta));
 			_mocapFault = FAULT_MINOR;
 		}
 

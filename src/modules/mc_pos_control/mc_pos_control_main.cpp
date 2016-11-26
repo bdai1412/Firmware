@@ -170,7 +170,7 @@ private:
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
 	orb_advert_t	_global_vel_sp_pub;		/**< vehicle global velocity setpoint publication */
-	orb_advert_t	_pid_err_sub;
+	orb_advert_t	_pid_err_pub;
 
 	orb_id_t _attitude_setpoint_id;
 
@@ -408,7 +408,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_att_sp_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
 	_global_vel_sp_pub(nullptr),
-	_pid_err_sub(nullptr),
+	_pid_err_pub(nullptr),
 	_attitude_setpoint_id(0),
 	_vehicle_status{},
 	_vehicle_land_detected{},
@@ -2146,10 +2146,10 @@ MulticopterPositionControl::task_main()
 			_pid_err.vz_d = vel_err_d(2);
 
 			/* publish pid error */
-			if (_pid_err_sub != nullptr) {
-				orb_publish(ORB_ID(pid_err), _pid_err_sub, &_pid_err);
+			if (_pid_err_pub != nullptr) {
+				orb_publish(ORB_ID(pid_err), _pid_err_pub, &_pid_err);
 			} else {
-				_pid_err_sub = orb_advertise(ORB_ID(pid_err), &_pid_err);
+				_pid_err_pub = orb_advertise(ORB_ID(pid_err), &_pid_err);
 			}
 
 		} else {

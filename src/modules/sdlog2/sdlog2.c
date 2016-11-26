@@ -115,6 +115,7 @@
 #include <uORB/topics/target_info.h>
 /*used to store pid err -bdai<20 Nov 2016>*/
 #include <uORB/topics/pid_err.h>
+#include <uORB/topics/lpe_test.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -1231,6 +1232,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct target_info_s target_info;
 
 		struct pid_err_s pid_err;
+		struct lpe_test_s lpe_test;
 	} buf;
 
 	memset(&buf, 0, sizeof(buf));
@@ -1298,6 +1300,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_ERRX_s log_ERRX;
 			struct log_ERRX_s log_ERRY;
 			struct log_ERRX_s log_ERRZ;
+			struct log_LPE_s log_LPE;
 
 		} body;
 	} log_msg = {
@@ -1352,6 +1355,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int tari_sub;
 		/*bdai -bdai<20 Nov 2016>*/
 		int pid_err_sub;
+		int lpe_test_sub;
 	} subs;
 
 	subs.cmd_sub = -1;
@@ -1398,6 +1402,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.tari_sub = -1;
 
 	subs.pid_err_sub = -1;
+	subs.lpe_test_sub = -1;
 
 	/* add new topics HERE */
 
@@ -2371,6 +2376,16 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_ERRZ.v_i= buf.pid_err.vz_i;
 			log_msg.body.log_ERRZ.v_d= buf.pid_err.vz_d;
 			LOGBUFFER_WRITE_AND_COUNT(ERRX);
+		}
+
+		if (copy_if_updated(ORB_ID(lpe_test), &subs.lpe_test_sub, &buf.lpe_test)){
+			log_msg.msg_type = LOG_LPE_MSG;
+			for (int i = 0; i < 6; i ++){
+				log_msg.body.log_LPE.r[i] = buf.lpe_test.r[i];
+				log_msg.body.log_LPE.x[i] = buf.lpe_test.x[i];
+
+			}
+			LOGBUFFER_WRITE_AND_COUNT(LPE);
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);

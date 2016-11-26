@@ -640,6 +640,15 @@ struct log_ERRX_s {
 	float v_i;
 	float v_d;
 };
+
+/* --- LPE test--- */
+#define LOG_LPE_MSG 65
+struct log_LPE_s {
+	float r[6];
+	float x[6];
+};
+
+
 /********** SYSTEM MESSAGES, ID > 0x80 **********/
 
 /* --- TIME - TIME STAMP --- */
@@ -749,6 +758,7 @@ static const struct log_format_s log_formats[] = {
 	LOG_FORMAT(ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
 	LOG_FORMAT_S(ERRY, ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
 	LOG_FORMAT_S(ERRZ, ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
+	LOG_FORMAT(LPE, "ffffffffffff", "r0,r1,r2,r3,r4,r5,x0,x1,x2,x3,x4,x5"),
 	/* system-level messages, ID >= 0x80 */
 	/* FMT: don't write format of format message, it's useless */
 	LOG_FORMAT(TIME, "Q", "StartTime"),

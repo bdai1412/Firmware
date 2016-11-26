@@ -125,6 +125,7 @@ set(msg_file_names
 	
 	target_info.msg
 	pid_err.msg
+	lpe_test.msg
 	)
 
 # Get absolute paths
