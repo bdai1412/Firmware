@@ -179,6 +179,9 @@ set(config_module_list
 
 	# Hardware test
 	#examples/hwtest
+
+	#User specialization
+	modules/rotation_platform_uart
 )
 
 set(config_extra_builtin_cmds
