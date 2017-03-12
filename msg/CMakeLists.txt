@@ -59,6 +59,7 @@ set(msg_file_names
 	fw_pos_ctrl_status.msg
 	fw_virtual_attitude_setpoint.msg
 	fw_virtual_rates_setpoint.msg
+	gesture.msg
 	geofence_result.msg
 	gps_dump.msg
 	gps_inject_data.msg

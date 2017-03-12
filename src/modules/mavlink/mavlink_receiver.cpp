@@ -130,6 +130,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_transponder_report_pub(nullptr),
 	_collision_report_pub(nullptr),
 	_control_state_pub(nullptr),
+	_gesture_pub(nullptr),
 	_gps_inject_data_pub(nullptr),
 	_command_ack_pub(nullptr),
 	_control_mode_sub(orb_subscribe(ORB_ID(vehicle_control_mode))),
@@ -278,7 +279,8 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 	case MAVLINK_MSG_ID_LOGGING_ACK:
 		handle_message_logging_ack(msg);
 		break;
-
+	case MAVLINK_MSG_ID_GESTURE:
+		handle_message_gesture(msg);
 	default:
 		break;
 	}
@@ -742,6 +744,31 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 
 	} else {
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
+	}
+}
+
+void
+MavlinkReceiver::handle_message_gesture(mavlink_message_t *msg)
+{
+	mavlink_gesture_t gesture_rcv;
+	mavlink_msg_gesture_decode(msg, &gesture_rcv);
+
+	struct gesture_s gesture = {};
+
+	gesture.timestamp = sync_stamp(gesture_rcv.time_usec);
+
+	gesture.gesture_num = gesture_rcv.gesture_num;
+	gesture.reserved[0] = gesture_rcv.reserved[0];
+	gesture.reserved[1] = gesture_rcv.reserved[1];
+	gesture.reserved[2] = gesture_rcv.reserved[2];
+
+	printf("num is: %d\n", gesture.gesture_num);
+
+	if (_gesture_pub == nullptr) {
+		_gesture_pub = orb_advertise(ORB_ID(gesture), &gesture);
+
+	} else {
+		orb_publish(ORB_ID(gesture), _gesture_pub, &gesture);
 	}
 }
 
