@@ -76,6 +76,7 @@
 #include <uORB/topics/vehicle_global_velocity_setpoint.h>
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
+#include <uORB/topics/gesture.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/mavlink_log.h>
@@ -92,6 +93,24 @@
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ONE_G	9.8066f
 
+#define GESTURE_VEL_H 1.0f
+#define GESTURE_VEL_V 0.5f
+#define TURN_SPEED 0.15f	//0.75 rad/s
+
+
+enum states_e {
+	DISABLE = 0,
+	HOVERING,
+	LEFT,
+	RIGHT,
+	UPWARD,
+	DOWNWARD,
+	FORWARD,
+	BACKWARD,
+	TURN_LEFT,
+	TURN_RIGHT,
+	S_FOLLOW
+};
 /**
  * Multicopter position control app start / stop handling function
  *
@@ -139,6 +158,7 @@ private:
 	int		_pos_sp_triplet_sub;		/**< position setpoint triplet */
 	int		_local_pos_sp_sub;		/**< offboard local position setpoint */
 	int		_global_vel_sp_sub;		/**< offboard global velocity setpoint */
+	int		_gesture_sub;
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
@@ -157,6 +177,7 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;		/**< vehicle global velocity setpoint */
+	struct gesture_s							_gesture;
 
 	control::BlockParamFloat _manual_thr_min;
 	control::BlockParamFloat _manual_thr_max;
@@ -270,6 +291,8 @@ private:
 	float _takeoff_thrust_sp;
 	bool control_vel_enabled_prev;	/**< previous loop was in velocity controlled mode (control_state.flag_control_velocity_enabled) */
 
+	states_e	_ges_state;
+
 	// counters for reset events on position and velocity states
 	// they are used to identify a reset event
 	uint8_t _z_reset_counter;
@@ -277,6 +300,8 @@ private:
 	uint8_t _vz_reset_counter;
 	uint8_t _vxy_reset_counter;
 	uint8_t _heading_reset_counter;
+
+	states_e poll_ges_states();
 
 	/**
 	 * Update our local parameter cache.
@@ -377,6 +402,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sub(-1),
 	_pos_sp_triplet_sub(-1),
 	_global_vel_sp_sub(-1),
+	_gesture_sub(-1),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -418,6 +444,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_acc_z_lp(0),
 	_takeoff_thrust_sp(0.0f),
 	control_vel_enabled_prev(false),
+	_ges_state(DISABLE),
 	_z_reset_counter(0),
 	_xy_reset_counter(0),
 	_vz_reset_counter(0),
@@ -754,6 +781,44 @@ MulticopterPositionControl::poll_subscriptions()
 	}
 }
 
+states_e
+MulticopterPositionControl::poll_ges_states()
+{
+	states_e states = DISABLE;
+
+	if (_manual.aux1 <  0.6f) {
+		return states;
+	}
+
+	hrt_abstime timeNow = hrt_absolute_time();
+	static hrt_abstime pre_time = timeNow;
+
+	bool updated = false;
+	orb_check(_gesture_sub, &updated);
+
+	if(updated){
+		pre_time = timeNow;
+		orb_copy(ORB_ID(gesture), _gesture_sub, &_gesture);
+		switch (_gesture.gesture_num) {
+		case 41 : states = LEFT; break;
+		case 31 : states = RIGHT; break;
+		case 21 : states = UPWARD; break;
+		case 11 : states = DOWNWARD; break;
+		case 13 : states = FORWARD; break;
+		case 23 : states = BACKWARD; break;
+		case 43 : states = TURN_LEFT; break;
+		case 33 : states = TURN_RIGHT; break;
+		case 55 :
+		default : states = HOVERING; break;
+		}
+
+	} else if ((timeNow - pre_time) * 1e-6f > 0.5f) {
+		states = HOVERING;
+	}
+
+	return states;
+}
+
 float
 MulticopterPositionControl::scale_control(float ctl, float end, float dz, float dy)
 {
@@ -881,102 +946,159 @@ MulticopterPositionControl::control_manual(float dt)
 	math::Vector<3> req_vel_sp; // X,Y in local frame and Z in global (D), in [-1,1] normalized range
 	req_vel_sp.zero();
 
-	if (_control_mode.flag_control_altitude_enabled) {
-		/* set vertical velocity setpoint with throttle stick */
-		req_vel_sp(2) = -scale_control(_manual.z - 0.5f, 0.5f, _params.alt_ctl_dz, _params.alt_ctl_dy); // D
-	}
+	if (_ges_state == DISABLE||
+			!_control_mode.flag_control_altitude_enabled ||
+			!_control_mode.flag_control_position_enabled){
+		if (_control_mode.flag_control_altitude_enabled) {
+			/* set vertical velocity setpoint with throttle stick */
+			req_vel_sp(2) = -scale_control(_manual.z - 0.5f, 0.5f, _params.alt_ctl_dz, _params.alt_ctl_dy); // D
+		}
 
-	if (_control_mode.flag_control_position_enabled) {
-		/* set horizontal velocity setpoint with roll/pitch stick */
-		req_vel_sp(0) = _manual.x;
-		req_vel_sp(1) = _manual.y;
-	}
+		if (_control_mode.flag_control_position_enabled) {
+			/* set horizontal velocity setpoint with roll/pitch stick */
+			req_vel_sp(0) = _manual.x;
+			req_vel_sp(1) = _manual.y;
+		}
 
-	if (_control_mode.flag_control_altitude_enabled) {
-		/* reset alt setpoint to current altitude if needed */
-		reset_alt_sp();
-	}
+		if (_control_mode.flag_control_altitude_enabled) {
+			/* reset alt setpoint to current altitude if needed */
+			reset_alt_sp();
+		}
 
-	if (_control_mode.flag_control_position_enabled) {
-		/* reset position setpoint to current position if needed */
-		reset_pos_sp();
-	}
+		if (_control_mode.flag_control_position_enabled) {
+			/* reset position setpoint to current position if needed */
+			reset_pos_sp();
+		}
 
-	/* limit velocity setpoint */
-	float req_vel_sp_norm = req_vel_sp.length();
+		/* limit velocity setpoint */
+		float req_vel_sp_norm = req_vel_sp.length();
 
-	if (req_vel_sp_norm > 1.0f) {
-		req_vel_sp /= req_vel_sp_norm;
-	}
+		if (req_vel_sp_norm > 1.0f) {
+			req_vel_sp /= req_vel_sp_norm;
+		}
 
-	/* _req_vel_sp scaled to 0..1, scale it to max speed and rotate around yaw */
-	math::Matrix<3, 3> R_yaw_sp;
-	R_yaw_sp.from_euler(0.0f, 0.0f, _att_sp.yaw_body);
-	math::Vector<3> req_vel_sp_scaled = R_yaw_sp * req_vel_sp.emult(
-			_params.vel_cruise); // in NED and scaled to actual velocity
+		/* _req_vel_sp scaled to 0..1, scale it to max speed and rotate around yaw */
+		math::Matrix<3, 3> R_yaw_sp;
+		R_yaw_sp.from_euler(0.0f, 0.0f, _att_sp.yaw_body);
+		math::Vector<3> req_vel_sp_scaled = R_yaw_sp * req_vel_sp.emult(
+				_params.vel_cruise); // in NED and scaled to actual velocity
 
-	/*
-	 * assisted velocity mode: user controls velocity, but if	velocity is small enough, position
-	 * hold is activated for the corresponding axis
-	 */
+		/*
+		 * assisted velocity mode: user controls velocity, but if	velocity is small enough, position
+		 * hold is activated for the corresponding axis
+		 */
 
-	/* horizontal axes */
-	if (_control_mode.flag_control_position_enabled) {
-		/* check for pos. hold */
-		if (fabsf(req_vel_sp(0)) < _params.hold_xy_dz && fabsf(req_vel_sp(1)) < _params.hold_xy_dz) {
+		/* horizontal axes */
+		if (_control_mode.flag_control_position_enabled) {
+			/* check for pos. hold */
+			if (fabsf(req_vel_sp(0)) < _params.hold_xy_dz && fabsf(req_vel_sp(1)) < _params.hold_xy_dz) {
+				if (!_pos_hold_engaged) {
+
+					float vel_xy_mag = sqrtf(_vel(0) * _vel(0) + _vel(1) * _vel(1));
+
+					if (_params.hold_max_xy < FLT_EPSILON || vel_xy_mag < _params.hold_max_xy) {
+						/* reset position setpoint to have smooth transition from velocity control to position control */
+						_pos_hold_engaged = true;
+						_pos_sp(0) = _pos(0);
+						_pos_sp(1) = _pos(1);
+
+					} else {
+						_pos_hold_engaged = false;
+					}
+				}
+
+			} else {
+				_pos_hold_engaged = false;
+			}
+
+			/* set requested velocity setpoint */
 			if (!_pos_hold_engaged) {
+				_pos_sp(0) = _pos(0);
+				_pos_sp(1) = _pos(1);
+				_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
+				_vel_sp(0) = req_vel_sp_scaled(0);
+				_vel_sp(1) = req_vel_sp_scaled(1);
+			}
+		}
 
-				float vel_xy_mag = sqrtf(_vel(0) * _vel(0) + _vel(1) * _vel(1));
+		/* vertical axis */
+		if (_control_mode.flag_control_altitude_enabled) {
+			/* check for pos. hold */
+			if (fabsf(req_vel_sp(2)) < FLT_EPSILON) {
+				if (!_alt_hold_engaged) {
+					if (_params.hold_max_z < FLT_EPSILON || fabsf(_vel(2)) < _params.hold_max_z) {
+						/* reset position setpoint to have smooth transition from velocity control to position control */
+						_alt_hold_engaged = true;
+						_pos_sp(2) = _pos(2);
 
-				if (_params.hold_max_xy < FLT_EPSILON || vel_xy_mag < _params.hold_max_xy) {
-					/* reset position setpoint to have smooth transition from velocity control to position control */
-					_pos_hold_engaged = true;
-					_pos_sp(0) = _pos(0);
-					_pos_sp(1) = _pos(1);
-
-				} else {
-					_pos_hold_engaged = false;
+					} else {
+						_alt_hold_engaged = false;
+					}
 				}
+
+			} else {
+				_alt_hold_engaged = false;
+				_pos_sp(2) = _pos(2);
 			}
 
-		} else {
-			_pos_hold_engaged = false;
-		}
-
-		/* set requested velocity setpoint */
-		if (!_pos_hold_engaged) {
-			_pos_sp(0) = _pos(0);
-			_pos_sp(1) = _pos(1);
-			_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
-			_vel_sp(0) = req_vel_sp_scaled(0);
-			_vel_sp(1) = req_vel_sp_scaled(1);
-		}
-	}
-
-	/* vertical axis */
-	if (_control_mode.flag_control_altitude_enabled) {
-		/* check for pos. hold */
-		if (fabsf(req_vel_sp(2)) < FLT_EPSILON) {
+			/* set requested velocity setpoint */
 			if (!_alt_hold_engaged) {
-				if (_params.hold_max_z < FLT_EPSILON || fabsf(_vel(2)) < _params.hold_max_z) {
-					/* reset position setpoint to have smooth transition from velocity control to position control */
-					_alt_hold_engaged = true;
-					_pos_sp(2) = _pos(2);
-
-				} else {
-					_alt_hold_engaged = false;
-				}
+				_run_alt_control = false; /* request velocity setpoint to be used, instead of altitude setpoint */
+				_vel_sp(2) = req_vel_sp_scaled(2);
 			}
-
-		} else {
-			_alt_hold_engaged = false;
-			_pos_sp(2) = _pos(2);
+		}
+	} else {
+		bool vel_control = false;
+		switch (_ges_state) {
+			case UPWARD: 	req_vel_sp(2) = -GESTURE_VEL_V; vel_control = true; break;
+			case DOWNWARD: 	req_vel_sp(2) = GESTURE_VEL_V; vel_control = true; break;
+			case FORWARD: 	req_vel_sp(0) = GESTURE_VEL_H; vel_control = true; break;
+			case BACKWARD:	req_vel_sp(0) = -GESTURE_VEL_H; vel_control = true; break;
+			case LEFT: 		req_vel_sp(1) = -GESTURE_VEL_H; vel_control = true; break;
+			case RIGHT: 	req_vel_sp(1) = GESTURE_VEL_H; vel_control = true; break;
+			case HOVERING:
+			default :
+				if(!_pos_hold_engaged) {
+					_pos_hold_engaged = true;
+					_run_pos_control = true;
+				}
+				if (!_alt_hold_engaged) {
+					_alt_hold_engaged = true;
+					_run_alt_control = true;
+				}; break;
 		}
 
-		/* set requested velocity setpoint */
-		if (!_alt_hold_engaged) {
-			_run_alt_control = false; /* request velocity setpoint to be used, instead of altitude setpoint */
-			_vel_sp(2) = req_vel_sp_scaled(2);
+		reset_alt_sp();
+		reset_pos_sp();
+
+		if(vel_control) {
+			/* limit velocity setpoint */
+			float req_vel_sp_norm = req_vel_sp.length();
+
+			if (req_vel_sp_norm > 1.0f) {
+				req_vel_sp /= req_vel_sp_norm;
+			}
+
+			/* _req_vel_sp scaled to 0..1, scale it to max speed and rotate around yaw */
+			math::Matrix<3, 3> R_yaw_sp;
+			R_yaw_sp.from_euler(0.0f, 0.0f, _att_sp.yaw_body);
+			math::Vector<3> req_vel_sp_scaled = R_yaw_sp * req_vel_sp;
+
+			if(_ges_state == UPWARD || _ges_state == DOWNWARD) {
+				_run_alt_control = false; /* request velocity setpoint to be used, instead of altitude setpoint */
+				_vel_sp(2) = req_vel_sp_scaled(2);
+				_alt_hold_engaged = false;
+			}
+
+			if(_ges_state == FORWARD || _ges_state == BACKWARD
+					||_ges_state == LEFT || _ges_state == RIGHT) {
+				_pos_sp(0) = _pos(0);
+				_pos_sp(1) = _pos(1);
+				_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
+				_vel_sp(0) = req_vel_sp_scaled(0);
+				_vel_sp(1) = req_vel_sp_scaled(1);
+				_pos_hold_engaged = false;
+			}
 		}
 	}
 }
@@ -1319,6 +1441,7 @@ MulticopterPositionControl::task_main()
 	_pos_sp_triplet_sub = orb_subscribe(ORB_ID(position_setpoint_triplet));
 	_local_pos_sp_sub = orb_subscribe(ORB_ID(vehicle_local_position_setpoint));
 	_global_vel_sp_sub = orb_subscribe(ORB_ID(vehicle_global_velocity_setpoint));
+	_gesture_sub = orb_subscribe(ORB_ID(gesture));
 
 
 	parameters_update(true);
@@ -1372,6 +1495,7 @@ MulticopterPositionControl::task_main()
 		}
 
 		poll_subscriptions();
+		_ges_state = poll_ges_states();
 
 		parameters_update(false);
 
@@ -2103,7 +2227,16 @@ MulticopterPositionControl::task_main()
 							   _params.global_yaw_max;
 				const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
 
-				_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
+				if(_ges_state == DISABLE){
+					_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
+				} else {
+					switch (_ges_state) {
+					case TURN_LEFT: _att_sp.yaw_sp_move_rate = -TURN_SPEED; break;
+					case TURN_RIGHT: _att_sp.yaw_sp_move_rate = TURN_SPEED; break;
+					default : break;
+					}
+				}
+
 				float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
 				float yaw_offs = _wrap_pi(yaw_target - _yaw);
 
