@@ -93,8 +93,8 @@
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ONE_G	9.8066f
 
-#define GESTURE_VEL_H 1.0f
-#define GESTURE_VEL_V 0.5f
+#define GESTURE_VEL_H 0.5f
+#define GESTURE_VEL_V 0.3f
 #define TURN_SPEED 0.15f	//0.75 rad/s
 
 
@@ -301,7 +301,7 @@ private:
 	uint8_t _vxy_reset_counter;
 	uint8_t _heading_reset_counter;
 
-	states_e poll_ges_states();
+	void poll_ges_states();
 
 	/**
 	 * Update our local parameter cache.
@@ -781,13 +781,12 @@ MulticopterPositionControl::poll_subscriptions()
 	}
 }
 
-states_e
+void
 MulticopterPositionControl::poll_ges_states()
 {
-	states_e states = DISABLE;
-
 	if (_manual.aux1 <  0.6f) {
-		return states;
+		_ges_state = DISABLE;
+		return;
 	}
 
 	hrt_abstime timeNow = hrt_absolute_time();
@@ -799,24 +798,22 @@ MulticopterPositionControl::poll_ges_states()
 	if(updated){
 		pre_time = timeNow;
 		orb_copy(ORB_ID(gesture), _gesture_sub, &_gesture);
+		// PX4_INFO("timeNow: %8.4f,_gesture.gesture_num:%d", (double)timeNow, _gesture.gesture_num);
 		switch (_gesture.gesture_num) {
-		case 41 : states = LEFT; break;
-		case 31 : states = RIGHT; break;
-		case 21 : states = UPWARD; break;
-		case 11 : states = DOWNWARD; break;
-		case 13 : states = FORWARD; break;
-		case 23 : states = BACKWARD; break;
-		case 43 : states = TURN_LEFT; break;
-		case 33 : states = TURN_RIGHT; break;
-		case 55 :
-		default : states = HOVERING; break;
+		case 41 : _ges_state = LEFT; break;
+		case 31 : _ges_state = RIGHT; break;
+		case 21 : _ges_state = UPWARD; break;
+		case 11 : _ges_state = DOWNWARD; break;
+		case 13 : _ges_state = FORWARD; break;
+		case 23 : _ges_state = BACKWARD; break;
+		case 43 : _ges_state = TURN_LEFT; break;
+		case 33 : _ges_state = TURN_RIGHT; break;
+		default : _ges_state = HOVERING; break;
 		}
 
 	} else if ((timeNow - pre_time) * 1e-6f > 0.5f) {
-		states = HOVERING;
+		_ges_state = HOVERING;
 	}
-
-	return states;
 }
 
 float
@@ -1442,6 +1439,7 @@ MulticopterPositionControl::task_main()
 	_local_pos_sp_sub = orb_subscribe(ORB_ID(vehicle_local_position_setpoint));
 	_global_vel_sp_sub = orb_subscribe(ORB_ID(vehicle_global_velocity_setpoint));
 	_gesture_sub = orb_subscribe(ORB_ID(gesture));
+	orb_set_interval(_gesture_sub, 200);
 
 
 	parameters_update(true);
@@ -1495,7 +1493,8 @@ MulticopterPositionControl::task_main()
 		}
 
 		poll_subscriptions();
-		_ges_state = poll_ges_states();
+		poll_ges_states();
+		// PX4_INFO("_ges_state: %d", _ges_state);
 
 		parameters_update(false);
 
