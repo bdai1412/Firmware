@@ -93,9 +93,9 @@
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ONE_G	9.8066f
 
-#define GESTURE_VEL_H 0.5f
+#define GESTURE_VEL_H 0.75f
 #define GESTURE_VEL_V 0.3f
-#define TURN_SPEED 0.15f	//0.75 rad/s
+#define TURN_SPEED 0.3f	//0.75 rad/s
 
 
 enum states_e {
@@ -796,6 +796,7 @@ MulticopterPositionControl::poll_ges_states()
 	orb_check(_gesture_sub, &updated);
 
 	if(updated){
+		// PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
 		pre_time = timeNow;
 		orb_copy(ORB_ID(gesture), _gesture_sub, &_gesture);
 		// PX4_INFO("timeNow: %8.4f,_gesture.gesture_num:%d", (double)timeNow, _gesture.gesture_num);
@@ -811,8 +812,8 @@ MulticopterPositionControl::poll_ges_states()
 		default : _ges_state = HOVERING; break;
 		}
 
-	} else if ((timeNow - pre_time) * 1e-6f > 0.5f) {
-		_ges_state = HOVERING;
+	} else if ((timeNow - pre_time) * 1e-6f > 0.75f) {
+		_ges_state = DISABLE;
 	}
 }
 
