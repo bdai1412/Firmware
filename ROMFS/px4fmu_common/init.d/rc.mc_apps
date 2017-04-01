@@ -3,7 +3,7 @@
 # Standard apps for multirotors:
 # att & pos estimator, att & pos control.
 #
-
+set SYS_MC_EST_GROUP 2
 
 #---------------------------------------
 # Estimator group selction
