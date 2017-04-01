@@ -4,6 +4,7 @@
 # att & pos estimator, att & pos control.
 #
 
+param set SYS_MC_EST_GROUP 1
 
 #---------------------------------------
 # Estimator group selction

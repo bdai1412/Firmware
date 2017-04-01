@@ -109,7 +109,19 @@ enum states_e {
 	BACKWARD,
 	TURN_LEFT,
 	TURN_RIGHT,
-	S_FOLLOW
+	CICLE,
+	SQUARE
+};
+
+static float cicle_radius = 2.0f;
+static float range = 0.05f;
+static matrix::Vector3f cicle_center(0.0f, 0.0f, 0.0f);
+
+static math::Vector<3> vertexs[4] = {
+		math::Vector<3>(-2.0f, -2.0f, 0.0f),
+		math::Vector<3>(2.0f, -2.0f, 0.0f),
+		math::Vector<3>(2.f, 2.0f, 0.0f),
+		math::Vector<3>(-2.0f, 2.0f, 0.0f)
 };
 /**
  * Multicopter position control app start / stop handling function
@@ -809,6 +821,8 @@ MulticopterPositionControl::poll_ges_states()
 		case 23 : _ges_state = BACKWARD; break;
 		case 43 : _ges_state = TURN_LEFT; break;
 		case 33 : _ges_state = TURN_RIGHT; break;
+		case 12 : _ges_state = CICLE; break;
+		case 22 : _ges_state = SQUARE; break;
 		default : _ges_state = HOVERING; break;
 		}
 
@@ -1054,6 +1068,63 @@ MulticopterPositionControl::control_manual(float dt)
 			case BACKWARD:	req_vel_sp(0) = -GESTURE_VEL_H; vel_control = true; break;
 			case LEFT: 		req_vel_sp(1) = -GESTURE_VEL_H; vel_control = true; break;
 			case RIGHT: 	req_vel_sp(1) = GESTURE_VEL_H; vel_control = true; break;
+			case CICLE:
+			{
+				matrix::Vector3f distance(_pos(0) - cicle_center(0), _pos(1) - cicle_center(1), 0.0f);
+				matrix::Vector3f dist_cicle = distance.normalized() * cicle_radius;
+				matrix::Vector3f ref;
+				if (distance.length() > cicle_radius + range ||
+						distance.length() < cicle_radius - range) {
+					ref = dist_cicle;;
+				} else {
+					float delta = 0.001f * (float)M_PI;
+					matrix::AxisAnglef axis_angle(matrix::Vector3f(0.0f, 0.0f, 1.0f), delta);
+					matrix::Dcmf R(axis_angle);
+
+					ref = cicle_center + R * dist_cicle;
+				}
+				matrix::Vector3f vel_sp_hor =
+						matrix::Vector3f(ref(0) - _pos(0), ref(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
+				req_vel_sp(0) = vel_sp_hor(0);
+				req_vel_sp(1) = vel_sp_hor(1);
+
+				PX4_INFO("cicle_ref: %8.4f,%8.4f,%8.4f", (double)ref(0), (double)ref(1), (double)ref(2));
+
+				vel_control = true; break;
+			}
+			case SQUARE:
+			{
+				static math::Vector<3> line_a(vertexs[0]), line_b(vertexs[1]);
+				static int index = 1;
+
+				if ((_pos - line_b).length() < range) {
+					index++;
+					if (index++ == 4) {
+						line_a = vertexs[index-1];
+						index = 0;
+						line_b = vertexs[index];
+					} else {
+						line_a = vertexs[index-1];
+						line_b = vertexs[index];
+					}
+				}
+				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
+				math::Vector<3> pos_sp;
+				bool near = cross_sphere_line(pos, range, line_a, line_b, pos_sp);
+
+				if (!near) {
+					/* we're far away from trajectory, pos_sp_s is set to the nearest point on the trajectory */
+					pos_sp = pos + (pos_sp - pos).normalized();
+				}
+				matrix::Vector3f vel_sp_hor =
+						matrix::Vector3f(pos_sp(0) - _pos(0), pos_sp(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
+
+				PX4_INFO("pos_sp_ref: %8.4f,%8.4f,%8.4f", (double)pos_sp(0), (double)pos_sp(1), (double)pos_sp(2));
+				req_vel_sp(0) = vel_sp_hor(0);
+				req_vel_sp(1) = vel_sp_hor(1);
+
+				vel_control = true; break;
+			}
 			case HOVERING:
 			default :
 				if(!_pos_hold_engaged) {
@@ -1089,7 +1160,8 @@ MulticopterPositionControl::control_manual(float dt)
 			}
 
 			if(_ges_state == FORWARD || _ges_state == BACKWARD
-					||_ges_state == LEFT || _ges_state == RIGHT) {
+					||_ges_state == LEFT || _ges_state == RIGHT
+					||_ges_state == CICLE|| _ges_state == SQUARE) {
 				_pos_sp(0) = _pos(0);
 				_pos_sp(1) = _pos(1);
 				_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
@@ -2227,14 +2299,12 @@ MulticopterPositionControl::task_main()
 							   _params.global_yaw_max;
 				const float yaw_offset_max = yaw_rate_max / _params.mc_att_yaw_p;
 
-				if(_ges_state == DISABLE){
+				switch (_ges_state) {
+				case TURN_LEFT: _att_sp.yaw_sp_move_rate = -TURN_SPEED; break;
+				case TURN_RIGHT: _att_sp.yaw_sp_move_rate = TURN_SPEED; break;
+				default :
 					_att_sp.yaw_sp_move_rate = _manual.r * yaw_rate_max;
-				} else {
-					switch (_ges_state) {
-					case TURN_LEFT: _att_sp.yaw_sp_move_rate = -TURN_SPEED; break;
-					case TURN_RIGHT: _att_sp.yaw_sp_move_rate = TURN_SPEED; break;
-					default : break;
-					}
+					break;
 				}
 
 				float yaw_target = _wrap_pi(_att_sp.yaw_body + _att_sp.yaw_sp_move_rate * dt);
