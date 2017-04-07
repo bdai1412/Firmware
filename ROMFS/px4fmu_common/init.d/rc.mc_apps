@@ -46,4 +46,4 @@ mc_pos_control start
 #
 land_detector start multicopter
 
-mavlink start -d /dev/ttyS3 -b 57600 -m custom
+#mavlink start -d /dev/ttyS3 -b 57600 -m custom

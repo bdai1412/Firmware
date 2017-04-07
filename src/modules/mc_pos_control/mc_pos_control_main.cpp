@@ -809,7 +809,7 @@ MulticopterPositionControl::poll_ges_states()
 //	bool updated = false;
 //	orb_check(_gesture_sub, &updated);
 	bool updated = true;
-	_gesture.gesture_num = 12;
+	_gesture.gesture_num = 22;
 
 	if(updated){
 //		PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
@@ -1094,7 +1094,7 @@ MulticopterPositionControl::control_manual(float dt)
 				} else {
 					if ((pos - start_point).length() < range || started) {
 						started = true;
-						float period = 30.0f;
+						float period = 20.0f;
 						if ((now_time - init_time)*1.0e-6f > period) init_time = now_time;
 						float theta = 2.0f*(float)M_PI * (now_time - init_time)*1.0e-6f / period;
 
@@ -1142,7 +1142,7 @@ MulticopterPositionControl::control_manual(float dt)
 				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
 				static math::Vector<3> line_a(vertexs[0]), line_b(vertexs[1]);
 				static int index = 1;
-				static math::Vector<3> start_point;
+//				static math::Vector<3> start_point;
 				static bool started = false;
 
 				hrt_abstime now_time = hrt_absolute_time();
@@ -1151,11 +1151,11 @@ MulticopterPositionControl::control_manual(float dt)
 					in_square = true;
 					started = false;
 					init_time = now_time;
-					cross_sphere_line(pos, range, line_a, line_b, start_point);
+//					cross_sphere_line(pos, range, line_a, line_b, start_point);
 				} else {
-					if ((pos - start_point).length() < range || started) {
+					if ((pos - line_a).length() < range || started) {
 						started = true;
-						float period = 40.0f / 4.0f;
+						float period = 30.0f / 4.0f;
 						float time_s = (now_time - init_time)*1.0e-6f;
 
 						if (time_s > period) {
@@ -1177,8 +1177,8 @@ MulticopterPositionControl::control_manual(float dt)
 						_pos_sp(1) = ref(1);
 
 					} else {
-						_pos_sp(0) = start_point(0);
-						_pos_sp(1) = start_point(1);
+						_pos_sp(0) = line_a(0);
+						_pos_sp(1) = line_a(1);
 					}
 				}
 
