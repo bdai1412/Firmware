@@ -97,6 +97,7 @@
 #define GESTURE_VEL_V 0.3f
 #define TURN_SPEED 0.3f	//0.75 rad/s
 
+#define TIME_FOLLOWING
 
 enum states_e {
 	DISABLE = 0,
@@ -114,14 +115,15 @@ enum states_e {
 };
 
 static float cicle_radius = 2.0f;
+static float vertex_length = 2.0f;
 static float range = 0.5f;
 static matrix::Vector3f cicle_center(0.0f, 0.0f, 0.0f);
 
 static math::Vector<3> vertexs[4] = {
-		math::Vector<3>(-2.0f, -2.0f, 0.0f),
-		math::Vector<3>(2.0f, -2.0f, 0.0f),
-		math::Vector<3>(2.0f, 2.0f, 0.0f),
-		math::Vector<3>(-2.0f, 2.0f, 0.0f)
+		math::Vector<3>(-vertex_length, -vertex_length, 0.0f),
+		math::Vector<3>(vertex_length, -vertex_length, 0.0f),
+		math::Vector<3>(vertex_length, vertex_length, 0.0f),
+		math::Vector<3>(-vertex_length, vertex_length, 0.0f)
 };
 /**
  * Multicopter position control app start / stop handling function
@@ -804,8 +806,10 @@ MulticopterPositionControl::poll_ges_states()
 	hrt_abstime timeNow = hrt_absolute_time();
 	static hrt_abstime pre_time = timeNow;
 
-	bool updated = false;
-	orb_check(_gesture_sub, &updated);
+//	bool updated = false;
+//	orb_check(_gesture_sub, &updated);
+	bool updated = true;
+	_gesture.gesture_num = 12;
 
 	if(updated){
 //		PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
@@ -1061,6 +1065,12 @@ MulticopterPositionControl::control_manual(float dt)
 		}
 	} else {
 		bool vel_control = false;
+		static bool in_cicle = false;
+		if (_ges_state != CICLE) in_cicle = false;
+
+		static bool in_square = false;
+		if (_ges_state != SQUARE) in_square = false;
+
 		switch (_ges_state) {
 			case UPWARD: 	req_vel_sp(2) = -GESTURE_VEL_V; vel_control = true; break;
 			case DOWNWARD: 	req_vel_sp(2) = GESTURE_VEL_V; vel_control = true; break;
@@ -1070,10 +1080,41 @@ MulticopterPositionControl::control_manual(float dt)
 			case RIGHT: 	req_vel_sp(1) = GESTURE_VEL_H; vel_control = true; break;
 			case CICLE:
 			{
+#ifdef TIME_FOLLOWING
+				matrix::Vector3f pos(_pos(0), _pos(1), 0.0f);
+				hrt_abstime now_time = hrt_absolute_time();
+				static matrix::Vector3f start_point;
+				static hrt_abstime init_time;
+				static bool started = false;
+				if (in_cicle == false) {
+					in_cicle = true;
+					started = false;
+					init_time = now_time;
+					start_point = (pos - cicle_center).normalized() * cicle_radius;
+				} else {
+					if ((pos - start_point).length() < range || started) {
+						started = true;
+						float period = 30.0f;
+						if ((now_time - init_time)*1.0e-6f > period) init_time = now_time;
+						float theta = 2.0f*(float)M_PI * (now_time - init_time)*1.0e-6f / period;
+
+						PX4_INFO("theta is:", (double)theta);
+						matrix::AxisAnglef axis_angle(matrix::Vector3f(0.0f, 0.0f, 1.0f), theta);
+						matrix::Dcmf R(axis_angle);
+						matrix::Vector3f ref = cicle_center + R * start_point;
+						_pos_sp(0) = ref(0);
+						_pos_sp(1) = ref(1);
+					} else {
+						_pos_sp(0) = start_point(0);
+						_pos_sp(1) = start_point(1);
+					}
+				}
+
+#else
 				matrix::Vector3f distance(_pos(0) - cicle_center(0), _pos(1) - cicle_center(1), 0.0f);
 				matrix::Vector3f dist_cicle = distance.normalized() * cicle_radius;
 				matrix::Vector3f ref;
-				PX4_INFO("distance: %8.4f", (double)distance.length());
+//				PX4_INFO("distance: %8.4f", (double)distance.length());
 				if (distance.length() > cicle_radius + range ||
 						distance.length() < cicle_radius - range) {
 					ref = dist_cicle;
@@ -1083,10 +1124,11 @@ MulticopterPositionControl::control_manual(float dt)
 					matrix::Dcmf R(axis_angle);
 
 					ref = cicle_center + R * dist_cicle;
-					PX4_INFO("start rotation");
+//					PX4_INFO("start rotation");
 				}
 				_pos_sp(0) = ref(0);
 				_pos_sp(1) = ref(1);
+#endif
 //				matrix::Vector3f vel_sp_hor =
 //						matrix::Vector3f(ref(0) - _pos(0), ref(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
 //				req_vel_sp(0) = vel_sp_hor(0);
@@ -1096,6 +1138,51 @@ MulticopterPositionControl::control_manual(float dt)
 			}
 			case SQUARE:
 			{
+#ifdef TIME_FOLLOWING
+				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
+				static math::Vector<3> line_a(vertexs[0]), line_b(vertexs[1]);
+				static int index = 1;
+				static math::Vector<3> start_point;
+				static bool started = false;
+
+				hrt_abstime now_time = hrt_absolute_time();
+				static hrt_abstime init_time = now_time;
+				if (in_square == false) {
+					in_square = true;
+					started = false;
+					init_time = now_time;
+					cross_sphere_line(pos, range, line_a, line_b, start_point);
+				} else {
+					if ((pos - start_point).length() < range || started) {
+						started = true;
+						float period = 40.0f / 4.0f;
+						float time_s = (now_time - init_time)*1.0e-6f;
+
+						if (time_s > period) {
+							init_time = now_time;
+							time_s = (now_time - init_time)*1.0e-6f;
+							index++;
+							if (index == 4) {
+								line_a = vertexs[index-1];
+								index = 0;
+								line_b = vertexs[index];
+							} else {
+								line_a = vertexs[index-1];
+								line_b = vertexs[index];
+							}
+						}
+
+						math::Vector<3> ref = line_a + (line_b - line_a) * (time_s / period);
+						_pos_sp(0) = ref(0);
+						_pos_sp(1) = ref(1);
+
+					} else {
+						_pos_sp(0) = start_point(0);
+						_pos_sp(1) = start_point(1);
+					}
+				}
+
+#else
 				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
 				static math::Vector<3> line_a(vertexs[0]), line_b(vertexs[1]);
 				static int index = 1;
@@ -1128,6 +1215,7 @@ MulticopterPositionControl::control_manual(float dt)
 //				req_vel_sp(1) = vel_sp_hor(1);
 				_pos_sp(0) = pos_sp_temp(0);
 				_pos_sp(1) = pos_sp_temp(1);
+#endif
 				break;
 			}
 			case HOVERING:
