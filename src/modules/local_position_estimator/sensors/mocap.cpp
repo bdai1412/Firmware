@@ -117,7 +117,7 @@ void BlockLocalPositionEstimator::mocapCorrect()
 		_x += dx;
 		_P -= K * C * _P;
 #if USING_MOCAP_VEL == 1
-		float a = 0.8f;
+		float a = 0.99f;
 		_x(X_vx) = pre_vel[0] = a*_sub_mocap.get().vx + (1.0f-a)*pre_vel[0];
 		_x(X_vy) = pre_vel[1] = a*_sub_mocap.get().vy + (1.0f-a)*pre_vel[1];
 		_x(X_vz) = pre_vel[2] = a*_sub_mocap.get().vz + (1.0f-a)*pre_vel[2];

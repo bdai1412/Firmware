@@ -345,7 +345,7 @@ then
 		unset HIL
 	else
 		unset HIL
-		gps start
+		#gps start
 	fi
 
 	# waypoint storage

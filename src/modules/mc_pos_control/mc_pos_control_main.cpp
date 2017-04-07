@@ -114,13 +114,13 @@ enum states_e {
 };
 
 static float cicle_radius = 2.0f;
-static float range = 0.05f;
+static float range = 0.5f;
 static matrix::Vector3f cicle_center(0.0f, 0.0f, 0.0f);
 
 static math::Vector<3> vertexs[4] = {
 		math::Vector<3>(-2.0f, -2.0f, 0.0f),
 		math::Vector<3>(2.0f, -2.0f, 0.0f),
-		math::Vector<3>(2.f, 2.0f, 0.0f),
+		math::Vector<3>(2.0f, 2.0f, 0.0f),
 		math::Vector<3>(-2.0f, 2.0f, 0.0f)
 };
 /**
@@ -808,10 +808,10 @@ MulticopterPositionControl::poll_ges_states()
 	orb_check(_gesture_sub, &updated);
 
 	if(updated){
-		// PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
+//		PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
 		pre_time = timeNow;
 		orb_copy(ORB_ID(gesture), _gesture_sub, &_gesture);
-		// PX4_INFO("timeNow: %8.4f,_gesture.gesture_num:%d", (double)timeNow, _gesture.gesture_num);
+//		PX4_INFO("timeNow: %8.4f,_gesture.gesture_num:%d", (double)timeNow, _gesture.gesture_num);
 		switch (_gesture.gesture_num) {
 		case 41 : _ges_state = LEFT; break;
 		case 31 : _ges_state = RIGHT; break;
@@ -1073,33 +1073,36 @@ MulticopterPositionControl::control_manual(float dt)
 				matrix::Vector3f distance(_pos(0) - cicle_center(0), _pos(1) - cicle_center(1), 0.0f);
 				matrix::Vector3f dist_cicle = distance.normalized() * cicle_radius;
 				matrix::Vector3f ref;
+				PX4_INFO("distance: %8.4f", (double)distance.length());
 				if (distance.length() > cicle_radius + range ||
 						distance.length() < cicle_radius - range) {
-					ref = dist_cicle;;
+					ref = dist_cicle;
 				} else {
-					float delta = 0.001f * (float)M_PI;
+					float delta = 0.1f * (float)M_PI;
 					matrix::AxisAnglef axis_angle(matrix::Vector3f(0.0f, 0.0f, 1.0f), delta);
 					matrix::Dcmf R(axis_angle);
 
 					ref = cicle_center + R * dist_cicle;
+					PX4_INFO("start rotation");
 				}
-				matrix::Vector3f vel_sp_hor =
-						matrix::Vector3f(ref(0) - _pos(0), ref(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
-				req_vel_sp(0) = vel_sp_hor(0);
-				req_vel_sp(1) = vel_sp_hor(1);
-
-				PX4_INFO("cicle_ref: %8.4f,%8.4f,%8.4f", (double)ref(0), (double)ref(1), (double)ref(2));
-
-				vel_control = true; break;
+				_pos_sp(0) = ref(0);
+				_pos_sp(1) = ref(1);
+//				matrix::Vector3f vel_sp_hor =
+//						matrix::Vector3f(ref(0) - _pos(0), ref(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
+//				req_vel_sp(0) = vel_sp_hor(0);
+//				req_vel_sp(1) = vel_sp_hor(1);
+//				PX4_INFO("cicle_ref: %8.4f,%8.4f", (double)ref(0), (double)ref(1));
+				break;
 			}
 			case SQUARE:
 			{
+				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
 				static math::Vector<3> line_a(vertexs[0]), line_b(vertexs[1]);
 				static int index = 1;
 
-				if ((_pos - line_b).length() < range) {
+				if ((pos - line_b).length() < range) {
 					index++;
-					if (index++ == 4) {
+					if (index == 4) {
 						line_a = vertexs[index-1];
 						index = 0;
 						line_b = vertexs[index];
@@ -1108,22 +1111,24 @@ MulticopterPositionControl::control_manual(float dt)
 						line_b = vertexs[index];
 					}
 				}
-				math::Vector<3> pos(_pos(0), _pos(1), 0.0f);
-				math::Vector<3> pos_sp;
-				bool near = cross_sphere_line(pos, range, line_a, line_b, pos_sp);
+				math::Vector<3> pos_sp_temp;
+				bool near = cross_sphere_line(pos, range, line_a, line_b, pos_sp_temp);
 
 				if (!near) {
 					/* we're far away from trajectory, pos_sp_s is set to the nearest point on the trajectory */
-					pos_sp = pos + (pos_sp - pos).normalized();
+					pos_sp_temp = pos + (pos_sp_temp - pos).normalized()*range;
 				}
-				matrix::Vector3f vel_sp_hor =
-						matrix::Vector3f(pos_sp(0) - _pos(0), pos_sp(1) - _pos(1), 0.0f).normalized() * GESTURE_VEL_H;
+				PX4_INFO("line_b:%8.4f,%8.4f",(double)line_b(0),(double)line_b(1));
+				PX4_INFO(" near:%d	pos:%8.4f,%8.4f	pos_sp_ref: %8.4f,%8.4f",
+						near,
+						(double)pos(0), (double)pos(1),
+						(double)pos_sp_temp(0), (double)pos_sp_temp(1));
 
-				PX4_INFO("pos_sp_ref: %8.4f,%8.4f,%8.4f", (double)pos_sp(0), (double)pos_sp(1), (double)pos_sp(2));
-				req_vel_sp(0) = vel_sp_hor(0);
-				req_vel_sp(1) = vel_sp_hor(1);
-
-				vel_control = true; break;
+//				req_vel_sp(0) = vel_sp_hor(0);
+//				req_vel_sp(1) = vel_sp_hor(1);
+				_pos_sp(0) = pos_sp_temp(0);
+				_pos_sp(1) = pos_sp_temp(1);
+				break;
 			}
 			case HOVERING:
 			default :
@@ -1160,8 +1165,7 @@ MulticopterPositionControl::control_manual(float dt)
 			}
 
 			if(_ges_state == FORWARD || _ges_state == BACKWARD
-					||_ges_state == LEFT || _ges_state == RIGHT
-					||_ges_state == CICLE|| _ges_state == SQUARE) {
+					||_ges_state == LEFT || _ges_state == RIGHT) {
 				_pos_sp(0) = _pos(0);
 				_pos_sp(1) = _pos(1);
 				_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
@@ -1567,7 +1571,7 @@ MulticopterPositionControl::task_main()
 
 		poll_subscriptions();
 		poll_ges_states();
-		// PX4_INFO("_ges_state: %d", _ges_state);
+//		PX4_INFO("_ges_state: %d", _ges_state);
 
 		parameters_update(false);
 
