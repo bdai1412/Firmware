@@ -111,6 +111,7 @@
 #include <uORB/topics/vehicle_land_detected.h>
 #include <uORB/topics/commander_state.h>
 #include <uORB/topics/cpuload.h>
+#include <uORB/topics/wire_pole.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -1221,6 +1222,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct ekf2_replay_s replay;
 		struct vehicle_land_detected_s land_detected;
 		struct cpuload_s cpuload;
+		struct wire_pole_s wire_pole;
 		struct vehicle_gps_position_s dual_gps_pos;
 	} buf;
 
@@ -1283,6 +1285,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_LAND_s log_LAND;
 			struct log_RPL6_s log_RPL6;
 			struct log_LOAD_s log_LOAD;
+			struct log_SWP_s  log_SWP;
 			struct log_DPRS_s log_DPRS;
 		} body;
 	} log_msg = {
@@ -1333,6 +1336,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int land_detected_sub;
 		int commander_state_sub;
 		int cpuload_sub;
+		int wire_pole_sub;
 		int diff_pres_sub;
 	} subs;
 
@@ -1376,6 +1380,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.land_detected_sub = -1;
 	subs.commander_state_sub = -1;
 	subs.cpuload_sub = -1;
+	subs.wire_pole_sub = -1;
 	subs.diff_pres_sub = -1;
 
 	/* add new topics HERE */
@@ -2320,6 +2325,17 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_LOAD.cpu_load = buf.cpuload.load;
 			LOGBUFFER_WRITE_AND_COUNT(LOAD);
 
+		}
+
+		/* --- WIRE_POLE --- */
+		if (copy_if_updated(ORB_ID(wire_pole), &subs.wire_pole_sub, &buf.wire_pole)) {
+			log_msg.msg_type = LOG_SWP_MSG;
+			log_msg.body.log_SWP.num = buf.wire_pole.num;
+			log_msg.body.log_SWP.lat = buf.wire_pole.lat;
+			log_msg.body.log_SWP.lon = buf.wire_pole.lon;
+			log_msg.body.log_SWP.alt = buf.wire_pole.alt * 1.0e-3f;
+			log_msg.body.log_SWP.distance = buf.wire_pole.distance;
+			LOGBUFFER_WRITE_AND_COUNT(SWP);
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);
