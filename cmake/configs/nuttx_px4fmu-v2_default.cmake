@@ -179,6 +179,9 @@ set(config_module_list
 
 	# Hardware test
 	#examples/hwtest
+	
+	# Sample wire pole point
+	modules/sample_wire_pole
 )
 
 set(config_extra_builtin_cmds
