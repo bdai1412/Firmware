@@ -25,9 +25,8 @@
 #include <uORB/uORB.h>
 #include <uORB/topics/vehicle_gps_position.h>
 #include <uORB/topics/wire_pole.h>
-#include <uORB/topics/rc_channels.h>	//rc in
-
-#define CAMERA_TRIGGER 7
+//#include <uORB/topics/rc_channels.h>	//rc in
+#include <uORB/topics/manual_control_setpoint.h>
 
 static orb_advert_t	mavlink_log_pub = NULL;		/**< mavlink log advert */
 static bool thread_should_exit = false;		/**< daemon exit flag */
@@ -58,12 +57,12 @@ usage(const char *reason)
 int sample_wire_pole_thread_main(int argc, char *argv[])
 {
 	int gps_sub	=	orb_subscribe(ORB_ID(vehicle_gps_position));
-	int rc_sub	=	orb_subscribe(ORB_ID(rc_channels));
+	int manual_sub	=	orb_subscribe(ORB_ID(manual_control_setpoint));
 
 	struct vehicle_gps_position_s	gps;
 	memset(&gps, 0, sizeof(gps));
-	struct rc_channels_s	rc;
-	memset(&rc, 0, sizeof(rc));
+	struct manual_control_setpoint_s	manual;
+	memset(&manual, 0, sizeof(manual));
 	struct wire_pole_s	wire_pole;
 	memset(&wire_pole, 0, sizeof(wire_pole));
 	struct map_projection_reference_s ref;
@@ -73,7 +72,7 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 
 	/* one could wait for multiple topics with this technique, just using one here */
 	px4_pollfd_struct_t fds[] = {
-		{ .fd = rc_sub,   .events = POLLIN },
+		{ .fd = manual_sub,   .events = POLLIN },
 		/* there could be more file descriptors here, in the form like:
 		 * { .fd = other_sub_fd,   .events = POLLIN },
 		 */
@@ -84,18 +83,18 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 		/* handle the poll result */
 		if (poll_ret == 0) {
 			/* this means none of our providers is giving us data */
-			PX4_ERR("Got no rc data within a second");
+//			PX4_ERR("Got no manual data within a second");
 			continue;
 
 		} else if (poll_ret < 0) {
-			PX4_ERR("ERROR return value from poll(): %d", poll_ret);
+//			PX4_ERR("ERROR return value from poll(): %d", poll_ret);
 			continue;
 		}
 
 		static bool is_sw_init = true;	//is sw in init position
 
-		orb_copy(ORB_ID(rc_channels), rc_sub, &rc);
-		if (is_sw_init && rc.channels[CAMERA_TRIGGER] > 0.75f) {	//ready to sample gps point
+		orb_copy(ORB_ID(manual_control_setpoint), manual_sub, &manual);
+		if (is_sw_init && manual.aux1 > 0.75f) {	//ready to sample gps point
 			is_sw_init  = false;
 
 			bool updated = false;
@@ -122,18 +121,15 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 					map_projection_init(&ref, wire_pole.lat, wire_pole.lon);
 				}
 
-				mavlink_log_info(&mavlink_log_pub, "sampled: num %d, lat %10.7f, lon %10.7f, alt %8.4f",
-						wire_pole.num,
-						(double)(wire_pole.lat * 1.0e-7f),
-						(double)(wire_pole.lon * 1.0e-7f),
-						(double)(wire_pole.alt * 1.0e-3f));
+				mavlink_and_console_log_info(&mavlink_log_pub, "sampled: num %d,alt %4.2f,dist %4.2f",
+						wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
 
 				orb_publish(ORB_ID(wire_pole), wire_pole_pub, &wire_pole);	//finally publish the wire pole position
 			} else {
-				mavlink_log_info(&mavlink_log_pub, "sample fail, no gps info!");
+				mavlink_and_console_log_info(&mavlink_log_pub, "sample fail, no gps info!");
 			}
 
-		} else if(rc.channels[CAMERA_TRIGGER] <= 0.75f) {
+		} else if(manual.aux1 <= 0.75f) {
 			is_sw_init = true;
 		}
 	}
