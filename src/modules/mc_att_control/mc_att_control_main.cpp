@@ -81,6 +81,8 @@
 #include <uORB/topics/multirotor_motor_limits.h>
 #include <uORB/topics/mc_att_ctrl_status.h>
 #include <uORB/topics/battery_status.h>
+#include <uORB/topics/pid_error.h>
+
 #include <systemlib/param/param.h>
 #include <systemlib/err.h>
 #include <systemlib/perf_counter.h>
@@ -144,9 +146,13 @@ private:
 	int 	_motor_limits_sub;		/**< motor limits subscription */
 	int 	_battery_status_sub;	/**< battery status subscription */
 
+	int		_pid_err_sub;
+
 	orb_advert_t	_v_rates_sp_pub;		/**< rate setpoint publication */
 	orb_advert_t	_actuators_0_pub;		/**< attitude actuator controls publication */
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
+
+	orb_advert_t	_pid_err_pub;
 
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
 	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
@@ -164,6 +170,8 @@ private:
 	struct multirotor_motor_limits_s	_motor_limits;		/**< motor limits */
 	struct mc_att_ctrl_status_s 		_controller_status; /**< controller status */
 	struct battery_status_s				_battery_status;	/**< battery status */
+
+	struct pid_error_s _pid_err;
 
 	perf_counter_t	_loop_perf;			/**< loop performance counter */
 	perf_counter_t	_controller_latency_perf;
@@ -305,6 +313,11 @@ private:
 	void		battery_status_poll();
 
 	/**
+	 * Check for pid error updates.
+	 */
+	void		pid_error_poll();
+
+	/**
 	 * Shim for calling task_main from task_create.
 	 */
 	static void	task_main_trampoline(int argc, char *argv[]);
@@ -334,11 +347,13 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_manual_control_sp_sub(-1),
 	_armed_sub(-1),
 	_vehicle_status_sub(-1),
+	_pid_err_sub(-1),
 
 	/* publications */
 	_v_rates_sp_pub(nullptr),
 	_actuators_0_pub(nullptr),
 	_controller_status_pub(nullptr),
+	_pid_err_pub(nullptr),
 	_rates_sp_id(0),
 	_actuators_id(0),
 
@@ -360,6 +375,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	memset(&_vehicle_status, 0, sizeof(_vehicle_status));
 	memset(&_motor_limits, 0, sizeof(_motor_limits));
 	memset(&_controller_status, 0, sizeof(_controller_status));
+	memset(&_pid_err, 0, sizeof(_pid_err));
 	_vehicle_status.is_rotary_wing = true;
 
 	_params.att_p.zero();
@@ -682,6 +698,19 @@ MulticopterAttitudeControl::battery_status_poll()
 	}
 }
 
+void
+MulticopterAttitudeControl::pid_error_poll()
+{
+	/* check if there is a new message */
+	bool updated;
+	orb_check(_pid_err_sub, &updated);
+
+	if (updated) {
+		orb_copy(ORB_ID(pid_error), _pid_err_sub, &_pid_err);
+	}
+}
+
+
 /**
  * Attitude controller.
  * Input: 'vehicle_attitude_setpoint' topics (depending on mode)
@@ -765,6 +794,9 @@ MulticopterAttitudeControl::control_attitude(float dt)
 
 	/* calculate angular rates setpoint */
 	_rates_sp = _params.att_p.emult(e_R);
+	memcpy(_pid_err.ang, &e_R.data[0], sizeof(_pid_err.ang));
+	memcpy(_pid_err.ang_p, &_rates_sp.data[0], sizeof(_pid_err.ang_p));
+
 
 	/* limit rates */
 	for (int i = 0; i < 3; i++) {
@@ -778,7 +810,9 @@ MulticopterAttitudeControl::control_attitude(float dt)
 	}
 
 	/* feed forward yaw setpoint rate */
-	_rates_sp(2) += _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
+	_pid_err.yaw_f = _v_att_sp.yaw_sp_move_rate * yaw_w * _params.yaw_ff;
+	_rates_sp(2) += _pid_err.yaw_f;
+
 
 	/* weather-vane mode, dampen yaw rate */
 	if ((_v_control_mode.flag_control_velocity_enabled || _v_control_mode.flag_control_auto_enabled) &&
@@ -814,9 +848,19 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 
 	/* angular rates error */
 	math::Vector<3> rates_err = _rates_sp - rates;
+	math::Vector<3> rates_p = _params.rate_p.emult(rates_err * tpa);
+	math::Vector<3> rates_i = _rates_int;
+	math::Vector<3> rates_d = _params.rate_d.emult(_rates_prev - rates) / dt;
+	math::Vector<3> rates_f = _params.rate_ff.emult(_rates_sp);
 
-	_att_control = _params.rate_p.emult(rates_err * tpa) + _params.rate_d.emult(_rates_prev - rates) / dt + _rates_int +
-		       _params.rate_ff.emult(_rates_sp);
+	_att_control = rates_p + rates_i + rates_d + rates_f;
+
+	memcpy(_pid_err.rat, &rates_err.data[0], sizeof(_pid_err.rat));
+	memcpy(_pid_err.rat_p, &rates_p.data[0], sizeof(_pid_err.rat_p));
+	memcpy(_pid_err.rat_i, &rates_i.data[0], sizeof(_pid_err.rat_i));
+//	PX4_INFO("_pid_err.rat_i:%8.4f,%8.4f,%8.4f",(double)_pid_err.rat_i[0],(double)_pid_err.rat_i[1],(double)_pid_err.rat_i[2]);
+	memcpy(_pid_err.rat_d, &rates_d.data[0], sizeof(_pid_err.rat_d));
+	memcpy(_pid_err.rat_f, &rates_f.data[0], sizeof(_pid_err.rat_f));
 
 	_rates_sp_prev = _rates_sp;
 	_rates_prev = rates;
@@ -861,6 +905,7 @@ MulticopterAttitudeControl::task_main()
 	_vehicle_status_sub = orb_subscribe(ORB_ID(vehicle_status));
 	_motor_limits_sub = orb_subscribe(ORB_ID(multirotor_motor_limits));
 	_battery_status_sub = orb_subscribe(ORB_ID(battery_status));
+	_pid_err_sub = orb_subscribe(ORB_ID(pid_error));
 
 	/* initialize parameters cache */
 	parameters_update();
@@ -916,6 +961,7 @@ MulticopterAttitudeControl::task_main()
 			vehicle_status_poll();
 			vehicle_motor_limits_poll();
 			battery_status_poll();
+			pid_error_poll();
 
 			/* Check if we are in rattitude mode and the pilot is above the threshold on pitch
 			 * or roll (yaw can rotate 360 in normal att control).  If both are true don't
@@ -1039,6 +1085,12 @@ MulticopterAttitudeControl::task_main()
 				} else {
 					_controller_status_pub = orb_advertise(ORB_ID(mc_att_ctrl_status), &_controller_status);
 				}
+			}
+
+			if (_pid_err_pub != nullptr) {
+				orb_publish(ORB_ID(pid_error), _pid_err_pub, &_pid_err);
+			} else {
+				_pid_err_pub = orb_advertise(ORB_ID(pid_error), &_pid_err_pub);
 			}
 		}
 
