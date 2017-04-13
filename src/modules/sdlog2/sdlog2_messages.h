@@ -634,6 +634,25 @@ struct log_DPRS_s {
 	float temperature;
 };
 
+/* --- PID - PID VALUE -- */
+#define LOG_PID0_MSG 63	//position
+#define LOG_PID1_MSG 64 //velocity
+#define LOG_PID2_MSG 65 //angular rate
+struct log_PID_s {
+	float x[3];
+	float x_p[3];
+	float x_i[3];
+	float x_d[3];
+};
+
+#define LOG_PID3_MSG 66
+struct log_PIDA_s {
+	float ang[3];
+	float ang_p[3];
+	float rat_f[3];
+	float yaw_f;
+};
+
 /********** SYSTEM MESSAGES, ID > 0x80 **********/
 
 /* --- TIME - TIME STAMP --- */
@@ -724,6 +743,11 @@ static const struct log_format_s log_formats[] = {
 	LOG_FORMAT(LAND, "B", "Landed"),
 	LOG_FORMAT(LOAD, "f", "CPU"),
 	LOG_FORMAT(DPRS, "Qffff", "errors,DPRESraw,DPRES,DPRESmax,Temp"),
+	LOG_FORMAT_S(PID0, PID, "ffffffffffff", "px,py,pz,px_p,py_p,pz_p,px_i,py_i,pz_i,px_d,py_d,pz_d"),
+	LOG_FORMAT_S(PID1, PID, "ffffffffffff", "vx,vy,vz,vx_p,vy_p,vz_p,vx_i,vy_i,vz_i,vx_d,vy_d,vz_d"),
+	LOG_FORMAT_S(PID2, PID, "ffffffffffff", "rx,ry,rz,rx_p,ry_p,rz_p,rx_i,ry_i,rz_i,rx_d,ry_d,rz_d"),
+	LOG_FORMAT_S(PID3, PIDA, "ffffffffff", "ax,ay,az,ax_p,ay_p,az_p,rx_f,ry_f,rz_f,yaw_f"),
+
 	/* system-level messages, ID >= 0x80 */
 	/* FMT: don't write format of format message, it's useless */
 	LOG_FORMAT(TIME, "Q", "StartTime"),
