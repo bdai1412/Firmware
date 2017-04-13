@@ -125,6 +125,7 @@ set(msg_file_names
 	mount_orientation.msg
 	collision_report.msg
 	wire_pole.msg
+	pid_error.msg
 	)
 
 # Get absolute paths

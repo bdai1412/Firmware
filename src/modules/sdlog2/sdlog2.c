@@ -113,6 +113,8 @@
 #include <uORB/topics/cpuload.h>
 #include <uORB/topics/wire_pole.h>
 
+#include <uORB/topics/pid_error.h>
+
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
 #include <systemlib/perf_counter.h>
@@ -1223,6 +1225,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct vehicle_land_detected_s land_detected;
 		struct cpuload_s cpuload;
 		struct wire_pole_s wire_pole;
+		struct pid_error_s pid_err;
 		struct vehicle_gps_position_s dual_gps_pos;
 	} buf;
 
@@ -1286,6 +1289,8 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_RPL6_s log_RPL6;
 			struct log_LOAD_s log_LOAD;
 			struct log_SWP_s  log_SWP;
+			struct log_PID_s  log_PID;
+			struct log_PIDA_s log_PIDA;
 			struct log_DPRS_s log_DPRS;
 		} body;
 	} log_msg = {
@@ -1338,6 +1343,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int cpuload_sub;
 		int wire_pole_sub;
 		int diff_pres_sub;
+		int pid_err_sub;
 	} subs;
 
 	subs.cmd_sub = -1;
@@ -1382,6 +1388,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.cpuload_sub = -1;
 	subs.wire_pole_sub = -1;
 	subs.diff_pres_sub = -1;
+	subs.pid_err_sub = -1;
 
 	/* add new topics HERE */
 
@@ -2336,6 +2343,37 @@ int sdlog2_thread_main(int argc, char *argv[])
 			log_msg.body.log_SWP.alt = buf.wire_pole.alt * 1.0e-3f;
 			log_msg.body.log_SWP.distance = buf.wire_pole.distance;
 			LOGBUFFER_WRITE_AND_COUNT(SWP);
+		}
+
+		/* --- PID values --- */
+		if (copy_if_updated(ORB_ID(pid_error), &subs.pid_err_sub, &buf.pid_err)) {
+			log_msg.msg_type = LOG_PID0_MSG;
+			memcpy(log_msg.body.log_PID.x, buf.pid_err.pos, sizeof(log_msg.body.log_PID.x));
+			memcpy(log_msg.body.log_PID.x_p, buf.pid_err.pos_p, sizeof(log_msg.body.log_PID.x_p));
+			memcpy(log_msg.body.log_PID.x_i, buf.pid_err.pos_i, sizeof(log_msg.body.log_PID.x_i));
+			memcpy(log_msg.body.log_PID.x_d, buf.pid_err.pos_d, sizeof(log_msg.body.log_PID.x_d));
+			LOGBUFFER_WRITE_AND_COUNT(PID);
+
+			log_msg.msg_type = LOG_PID1_MSG;
+			memcpy(log_msg.body.log_PID.x, buf.pid_err.vel, sizeof(log_msg.body.log_PID.x));
+			memcpy(log_msg.body.log_PID.x_p, buf.pid_err.vel_p, sizeof(log_msg.body.log_PID.x_p));
+			memcpy(log_msg.body.log_PID.x_i, buf.pid_err.vel_i, sizeof(log_msg.body.log_PID.x_i));
+			memcpy(log_msg.body.log_PID.x_d, buf.pid_err.vel_d, sizeof(log_msg.body.log_PID.x_d));
+			LOGBUFFER_WRITE_AND_COUNT(PID);
+
+			log_msg.msg_type = LOG_PID2_MSG;
+			memcpy(log_msg.body.log_PID.x, buf.pid_err.rat, sizeof(log_msg.body.log_PID.x));
+			memcpy(log_msg.body.log_PID.x_p, buf.pid_err.rat_p, sizeof(log_msg.body.log_PID.x_p));
+			memcpy(log_msg.body.log_PID.x_i, buf.pid_err.rat_i, sizeof(log_msg.body.log_PID.x_i));
+			memcpy(log_msg.body.log_PID.x_d, buf.pid_err.rat_d, sizeof(log_msg.body.log_PID.x_d));
+			LOGBUFFER_WRITE_AND_COUNT(PID);
+
+			log_msg.msg_type = LOG_PID3_MSG;
+			memcpy(log_msg.body.log_PIDA.ang, buf.pid_err.ang, sizeof(log_msg.body.log_PIDA.ang));
+			memcpy(log_msg.body.log_PIDA.ang_p, buf.pid_err.ang_p, sizeof(log_msg.body.log_PIDA.ang_p));
+			memcpy(log_msg.body.log_PIDA.rat_f, buf.pid_err.rat_f, sizeof(log_msg.body.log_PIDA.rat_f));
+			log_msg.body.log_PIDA.yaw_f = buf.pid_err.yaw_f;
+			LOGBUFFER_WRITE_AND_COUNT(PIDA);
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);
