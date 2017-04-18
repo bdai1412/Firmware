@@ -634,15 +634,6 @@ struct log_DPRS_s {
 	float temperature;
 };
 
-/* --- SWP - SAMPLED WIRE POLE --- */
-#define LOG_SWP_MSG 67
-struct log_SWP_s {
-	uint32_t num;
-	int32_t lat;
-	int32_t lon;
-	float alt;
-	float distance;
-};
 /* --- PID - PID VALUE -- */
 #define LOG_PID0_MSG 63	//position
 #define LOG_PID1_MSG 64 //velocity
@@ -660,6 +651,16 @@ struct log_PIDA_s {
 	float ang_p[3];
 	float rat_f[3];
 	float yaw_f;
+};
+
+/* --- SWP - SAMPLED WIRE POLE --- */
+#define LOG_SWP_MSG 67
+struct log_SWP_s {
+	uint32_t num;
+	int32_t lat;
+	int32_t lon;
+	float alt;
+	float distance;
 };
 
 /********** SYSTEM MESSAGES, ID > 0x80 **********/

@@ -2334,17 +2334,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 
 		}
 
-		/* --- WIRE_POLE --- */
-		if (copy_if_updated(ORB_ID(wire_pole), &subs.wire_pole_sub, &buf.wire_pole)) {
-			log_msg.msg_type = LOG_SWP_MSG;
-			log_msg.body.log_SWP.num = buf.wire_pole.num;
-			log_msg.body.log_SWP.lat = buf.wire_pole.lat;
-			log_msg.body.log_SWP.lon = buf.wire_pole.lon;
-			log_msg.body.log_SWP.alt = buf.wire_pole.alt * 1.0e-3f;
-			log_msg.body.log_SWP.distance = buf.wire_pole.distance;
-			LOGBUFFER_WRITE_AND_COUNT(SWP);
-		}
-
+#ifdef LOG_PID
 		/* --- PID values --- */
 		if (copy_if_updated(ORB_ID(pid_error), &subs.pid_err_sub, &buf.pid_err)) {
 			log_msg.msg_type = LOG_PID0_MSG;
@@ -2374,6 +2364,18 @@ int sdlog2_thread_main(int argc, char *argv[])
 			memcpy(log_msg.body.log_PIDA.rat_f, buf.pid_err.rat_f, sizeof(log_msg.body.log_PIDA.rat_f));
 			log_msg.body.log_PIDA.yaw_f = buf.pid_err.yaw_f;
 			LOGBUFFER_WRITE_AND_COUNT(PIDA);
+		}
+#endif
+
+		/* --- WIRE_POLE --- */
+		if (copy_if_updated(ORB_ID(wire_pole), &subs.wire_pole_sub, &buf.wire_pole)) {
+			log_msg.msg_type = LOG_SWP_MSG;
+			log_msg.body.log_SWP.num = buf.wire_pole.num;
+			log_msg.body.log_SWP.lat = buf.wire_pole.lat;
+			log_msg.body.log_SWP.lon = buf.wire_pole.lon;
+			log_msg.body.log_SWP.alt = buf.wire_pole.alt * 1.0e-3f;
+			log_msg.body.log_SWP.distance = buf.wire_pole.distance;
+			LOGBUFFER_WRITE_AND_COUNT(SWP);
 		}
 
 		pthread_mutex_lock(&logbuffer_mutex);
