@@ -56,6 +56,8 @@ usage(const char *reason)
 
 int sample_wire_pole_thread_main(int argc, char *argv[])
 {
+	thread_running = true;
+
 	int gps_sub	=	orb_subscribe(ORB_ID(vehicle_gps_position));
 	int manual_sub	=	orb_subscribe(ORB_ID(manual_control_setpoint));
 
@@ -91,49 +93,53 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 			continue;
 		}
 
-		static bool is_sw_init = true;	//is sw in init position
+		static bool is_updated = true;	//is sw in init position
 
 		orb_copy(ORB_ID(manual_control_setpoint), manual_sub, &manual);
-		if (is_sw_init && manual.aux1 > 0.75f) {	//ready to sample gps point
-			is_sw_init  = false;
+		if (manual.aux1 > 0.75f) {	//ready to sample gps point
 
 			bool updated = false;
 			orb_check(gps_sub, &updated);
 
-			if (updated) {
+			if (is_updated && updated) {
+				is_updated = false;
 				orb_copy(ORB_ID(vehicle_gps_position), gps_sub, &gps);
 				wire_pole.timestamp = hrt_absolute_time();
 
 				static uint32_t num = 0;
-				wire_pole.num = ++num;
+				num++;
+				wire_pole.num = num;
 
 				wire_pole.lat = gps.lat;
 				wire_pole.lon = gps.lon;
 				wire_pole.alt = gps.alt;
+				double lat = wire_pole.lat * 1.0e-7;
+				double lon = wire_pole.lon * 1.0e-7;
 
 				if (num == 1) {
 					wire_pole.distance = 0.0f;
-					map_projection_init(&ref, wire_pole.lat, wire_pole.lon);
+					map_projection_init(&ref, lat, lon);
 				} else {
 					float x = 0.0f, y = 0.0f;
-					map_projection_project(&ref, wire_pole.lat, wire_pole.lon, &x, &y);
+					map_projection_project(&ref, lat, lon, &x, &y);
 					wire_pole.distance = sqrtf(x*x + y*y);
-					map_projection_init(&ref, wire_pole.lat, wire_pole.lon);
+					map_projection_init(&ref, lat, lon);
 				}
+				// mavlink_and_console_log_info(&mavlink_log_pub, "Num %d,Alt %2.4f,Dist %6.4f",
+						// wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
 
-				mavlink_and_console_log_info(&mavlink_log_pub, "sampled: num %d,alt %4.2f,dist %4.2f",
-						wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
-
-				orb_publish(ORB_ID(wire_pole), wire_pole_pub, &wire_pole);	//finally publish the wire pole position
 			} else {
 				mavlink_and_console_log_info(&mavlink_log_pub, "sample fail, no gps info!");
 			}
 
+			orb_publish(ORB_ID(wire_pole), wire_pole_pub, &wire_pole);	//finally publish the wire pole position
+
 		} else if(manual.aux1 <= 0.75f) {
-			is_sw_init = true;
+			is_updated = true;
 		}
 	}
 
+	thread_running = false;
 	return 0;
 }
 
