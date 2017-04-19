@@ -27,6 +27,7 @@
 #include <uORB/topics/wire_pole.h>
 //#include <uORB/topics/rc_channels.h>	//rc in
 #include <uORB/topics/manual_control_setpoint.h>
+#include <uORB/topics/actuator_armed.h>
 
 static orb_advert_t	mavlink_log_pub = NULL;		/**< mavlink log advert */
 static bool thread_should_exit = false;		/**< daemon exit flag */
@@ -60,6 +61,7 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 
 	int gps_sub	=	orb_subscribe(ORB_ID(vehicle_gps_position));
 	int manual_sub	=	orb_subscribe(ORB_ID(manual_control_setpoint));
+	int armed_sub 	=	orb_subscribe(ORB_ID(actuator_armed));
 
 	struct vehicle_gps_position_s	gps;
 	memset(&gps, 0, sizeof(gps));
@@ -67,8 +69,13 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 	memset(&manual, 0, sizeof(manual));
 	struct wire_pole_s	wire_pole;
 	memset(&wire_pole, 0, sizeof(wire_pole));
-	struct map_projection_reference_s ref;
+	struct map_projection_reference_s ref, pre_ref, test_ref;
 	memset(&ref, 0, sizeof(ref));
+	memset(&ref, 0, sizeof(pre_ref));
+	memset(&test_ref, 0, sizeof(test_ref));
+
+	struct  actuator_armed_s	armed;
+	memset(&armed, 0, sizeof(armed));
 
 	orb_advert_t wire_pole_pub = orb_advertise(ORB_ID(wire_pole), &wire_pole);
 
@@ -93,49 +100,74 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 			continue;
 		}
 
-		static bool is_updated = true;	//is sw in init position
+		static bool swith_on = true;	//is sw in init position
 
 		orb_copy(ORB_ID(manual_control_setpoint), manual_sub, &manual);
 		if (manual.aux1 > 0.75f) {	//ready to sample gps point
-
 			bool updated = false;
-			orb_check(gps_sub, &updated);
-
-			if (is_updated && updated) {
-				is_updated = false;
-				orb_copy(ORB_ID(vehicle_gps_position), gps_sub, &gps);
-				wire_pole.timestamp = hrt_absolute_time();
-
-				static uint32_t num = 0;
-				num++;
-				wire_pole.num = num;
-
-				wire_pole.lat = gps.lat;
-				wire_pole.lon = gps.lon;
-				wire_pole.alt = gps.alt;
-				double lat = wire_pole.lat * 1.0e-7;
-				double lon = wire_pole.lon * 1.0e-7;
-
-				if (num == 1) {
-					wire_pole.distance = 0.0f;
-					map_projection_init(&ref, lat, lon);
-				} else {
-					float x = 0.0f, y = 0.0f;
-					map_projection_project(&ref, lat, lon, &x, &y);
-					wire_pole.distance = sqrtf(x*x + y*y);
-					map_projection_init(&ref, lat, lon);
-				}
-				// mavlink_and_console_log_info(&mavlink_log_pub, "Num %d,Alt %2.4f,Dist %6.4f",
-						// wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
-
-			} else {
-				mavlink_and_console_log_info(&mavlink_log_pub, "sample fail, no gps info!");
+			orb_check(armed_sub, &updated);
+			if(updated) {
+				orb_copy(ORB_ID(actuator_armed), armed_sub, &armed);
 			}
+			bool gps_updated = false;
+			orb_check(gps_sub, &gps_updated);
 
+			if (swith_on) {
+				swith_on = false;
+				if (!gps_updated) {
+					mavlink_and_console_log_info(&mavlink_log_pub,
+							"sampled fail, no gps!");
+				} else {
+					orb_copy(ORB_ID(vehicle_gps_position), gps_sub, &gps);
+					wire_pole.timestamp = hrt_absolute_time();
+
+					static uint32_t num = 0;
+
+					bool reinit_test = false;
+					if(manual.aux2 <= -0.5f) {	//sample point normally
+						num++;
+						memcpy(&pre_ref, &ref, sizeof(pre_ref));
+					} else {	//num == 0 is used for testing the precision of gps
+						if(manual.aux2 > -0.5f && manual.aux2 < 0.5f && num == 0) {
+							reinit_test = true;		//reinit ref when num = 0 to test the precision of gps
+						} else if (num > 1){	// re-sample the point
+							// if not the first point
+							memcpy(&ref, &pre_ref, sizeof(ref));
+						}
+					}
+					wire_pole.num = num;
+
+					wire_pole.lat = gps.lat;
+					wire_pole.lon = gps.lon;
+					wire_pole.alt = gps.alt;
+					double lat = wire_pole.lat * 1.0e-7;
+					double lon = wire_pole.lon * 1.0e-7;
+					float x = 0.0f, y = 0.0f;
+
+					if(reinit_test) {	//reinit test reference gps point
+						map_projection_init(&test_ref, lat, lon);
+					}
+
+					if (num == 0) {	//testing mode
+						map_projection_project(&test_ref, lat, lon, &x, &y);
+					} else {
+						if (num == 1){ // the first or in testing status
+							map_projection_init(&ref, lat, lon);
+						}
+						map_projection_project(&ref, lat, lon, &x, &y);
+						map_projection_init(&ref, lat, lon);
+					}
+
+					wire_pole.distance = sqrtf(x*x + y*y);
+
+					mavlink_and_console_log_info(&mavlink_log_pub, "Num %d,Alt %2.4f,Dist %6.4f",
+							wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
+				}
+			}
 			orb_publish(ORB_ID(wire_pole), wire_pole_pub, &wire_pole);	//finally publish the wire pole position
 
 		} else if(manual.aux1 <= 0.75f) {
-			is_updated = true;
+			swith_on = true;
 		}
 	}
 
