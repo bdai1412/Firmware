@@ -4,7 +4,6 @@
  *  Created on: Apr 10, 2017
  *      Author: bdai
  */
-
 #include <px4_config.h>
 #include <px4_posix.h>
 #include <unistd.h>
@@ -77,6 +76,8 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 	struct  actuator_armed_s	armed;
 	memset(&armed, 0, sizeof(armed));
 
+	FILE *_fp = NULL;
+
 	orb_advert_t wire_pole_pub = orb_advertise(ORB_ID(wire_pole), &wire_pole);
 
 	/* one could wait for multiple topics with this technique, just using one here */
@@ -93,7 +94,7 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 		if (poll_ret == 0) {
 			/* this means none of our providers is giving us data */
 //			PX4_ERR("Got no manual data within a second");
-			continue;
+//			continue;
 
 		} else if (poll_ret < 0) {
 //			PX4_ERR("ERROR return value from poll(): %d", poll_ret);
@@ -111,14 +112,16 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 			}
 			bool gps_updated = false;
 			orb_check(gps_sub, &gps_updated);
-
 			if (swith_on) {
 				swith_on = false;
-				if (!gps_updated) {
+				if (!gps_updated ) {
 					mavlink_and_console_log_info(&mavlink_log_pub,
 							"sampled fail, no gps!");
 				} else {
 					orb_copy(ORB_ID(vehicle_gps_position), gps_sub, &gps);
+					if (gps.satellites_used < 6 || gps.fix_type < 3) {
+						mavlink_and_console_log_info(&mavlink_log_pub,"sampled inaccurately, bad gps!");
+					}
 					wire_pole.timestamp = hrt_absolute_time();
 
 					static uint32_t num = 0;
@@ -160,8 +163,52 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 
 					wire_pole.distance = sqrtf(x*x + y*y);
 
-					mavlink_and_console_log_info(&mavlink_log_pub, "Num %d,Alt %2.4f,Dist %6.4f",
-							wire_pole.num,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
+					// write to swp*.txt
+					struct timespec ts;
+					px4_clock_gettime(CLOCK_REALTIME, &ts);
+					time_t gps_time_sec = ts.tv_sec + (ts.tv_nsec / 1e9);
+					struct tm tt;
+					gmtime_r(&gps_time_sec, &tt);
+					char tstamp[22];
+					strftime(tstamp, sizeof(tstamp) - 1, "%Y_%m_%d_%H_%M_%S", &tt);
+
+					char text[50];
+
+					snprintf(text, sizeof(text)-1, "%d, %.7f, %.7f, %.2f, %.2f",wire_pole.num,
+							(double)lat,(double)lon,(double)(wire_pole.alt * 1.0e-3f), (double)wire_pole.distance);
+					if(_fp != NULL) {	// write swp to txt
+						fputs(tstamp, _fp);
+						fputs(": ", _fp);
+						if (EOF == fputs(text, _fp)){
+							mavlink_and_console_log_info(&mavlink_log_pub, "SWP write error!");
+						}
+						(void)fputs("\n", _fp);
+#ifdef __PX4_NUTTX
+							fsync(_fp->fs_filedes);
+#endif
+					} else {
+						char log_file_path[128];
+						/* use GPS time for log file naming, e.g. /fs/microsd/2014-01-19/19_37_52.bin */
+
+						/* store the log file in the root directory */
+						snprintf(log_file_path, sizeof(log_file_path) - 1, PX4_ROOTFSDIR"/fs/microsd/swp_%s.txt", tstamp);
+						_fp = fopen(log_file_path, "ab");
+						if (_fp != NULL) {
+							fputs("Time, Num, Lat, Lon, Alt, Dis\n",_fp);
+							/* write first message */
+							fputs(tstamp, _fp);
+							fputs(": ", _fp);
+							fputs(text, _fp);
+							fputs("\n", _fp);
+#ifdef __PX4_NUTTX
+							fsync(_fp->fs_filedes);
+#endif
+						} else {
+							mavlink_and_console_log_info(&mavlink_log_pub, "Failed to open swp log: %s", log_file_path);
+						}
+					}
+					mavlink_and_console_log_info(&mavlink_log_pub, "Num %d sampled, Distance %.2f",
+							wire_pole.num, (double)wire_pole.distance);
 				}
 			}
 			orb_publish(ORB_ID(wire_pole), wire_pole_pub, &wire_pole);	//finally publish the wire pole position
@@ -170,7 +217,9 @@ int sample_wire_pole_thread_main(int argc, char *argv[])
 			swith_on = true;
 		}
 	}
-
+	if (_fp != NULL) {
+		fclose(_fp);
+	}
 	thread_running = false;
 	return 0;
 }
