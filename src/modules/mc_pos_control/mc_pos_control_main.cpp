@@ -93,8 +93,8 @@
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ONE_G	9.8066f
 
-#define GESTURE_VEL_H 2.0f
-#define GESTURE_VEL_V 1.0f
+#define GESTURE_VEL_H 3.0f
+#define GESTURE_VEL_V 0.75f
 #define TURN_SPEED 0.3f	//0.75 rad/s
 
 // #define TIME_FOLLOWING
@@ -114,8 +114,8 @@ enum states_e {
 	SQUARE
 };
 
-static float cicle_radius = 2.0f;
-static float vertex_length = 2.0f;
+static float cicle_radius = 4.0f;
+static float vertex_length = 4.0f;
 static float range = 0.5f;
 static matrix::Vector3f cicle_center(0.0f, 0.0f, 0.0f);
 
@@ -826,11 +826,11 @@ MulticopterPositionControl::poll_ges_states()
 		case 43 : _ges_state = TURN_LEFT; break;
 		case 33 : _ges_state = TURN_RIGHT; break;
 		case 12 : _ges_state = CICLE; break;
-		case 22 : _ges_state = SQUARE; break;
+//		case 22 : _ges_state = SQUARE; break;
 		default : _ges_state = HOVERING; break;
 		}
 
-	} else if ((timeNow - pre_time) * 1e-6f > 1.5f) {
+	} else if ((timeNow - pre_time) * 1e-6f > 1.0f) {
 		_ges_state = DISABLE;
 	}
 }
