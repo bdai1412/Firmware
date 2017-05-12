@@ -291,8 +291,8 @@ void BlockLocalPositionEstimator::update()
 	// see which updates are available
 	bool flowUpdated = _sub_flow.updated();
 	bool paramsUpdated = _sub_param_update.updated();
-	// bool baroUpdated = _sub_sensor.updated();
-	bool baroUpdated = false;
+	bool baroUpdated = _sub_sensor.updated();
+//	bool baroUpdated = false;
 	bool gpsUpdated = _gps_on.get() && _sub_gps.updated();
 	bool visionUpdated = _vision_on.get() && _sub_vision_pos.updated();
 	bool mocapUpdated = _sub_mocap.updated();

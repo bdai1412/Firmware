@@ -93,11 +93,11 @@
 #define MANUAL_THROTTLE_MAX_MULTICOPTER	0.9f
 #define ONE_G	9.8066f
 
-#define GESTURE_VEL_H 0.75f
-#define GESTURE_VEL_V 0.3f
+#define GESTURE_VEL_H 2.0f
+#define GESTURE_VEL_V 1.0f
 #define TURN_SPEED 0.3f	//0.75 rad/s
 
-#define TIME_FOLLOWING
+// #define TIME_FOLLOWING
 
 enum states_e {
 	DISABLE = 0,
@@ -806,10 +806,10 @@ MulticopterPositionControl::poll_ges_states()
 	hrt_abstime timeNow = hrt_absolute_time();
 	static hrt_abstime pre_time = timeNow;
 
-//	bool updated = false;
-//	orb_check(_gesture_sub, &updated);
-	bool updated = true;
-	_gesture.gesture_num = 22;
+	bool updated = false;
+	orb_check(_gesture_sub, &updated);
+//	bool updated = true;
+//	_gesture.gesture_num = 22;
 
 	if(updated){
 //		PX4_INFO("time:%8.4f",(double)((timeNow - pre_time) * 1e-6f));
@@ -830,7 +830,7 @@ MulticopterPositionControl::poll_ges_states()
 		default : _ges_state = HOVERING; break;
 		}
 
-	} else if ((timeNow - pre_time) * 1e-6f > 0.75f) {
+	} else if ((timeNow - pre_time) * 1e-6f > 1.5f) {
 		_ges_state = DISABLE;
 	}
 }
@@ -1065,11 +1065,13 @@ MulticopterPositionControl::control_manual(float dt)
 		}
 	} else {
 		bool vel_control = false;
+#ifdef TIME_FOLLOWING		
 		static bool in_cicle = false;
 		if (_ges_state != CICLE) in_cicle = false;
 
 		static bool in_square = false;
 		if (_ges_state != SQUARE) in_square = false;
+#endif
 
 		switch (_ges_state) {
 			case UPWARD: 	req_vel_sp(2) = -GESTURE_VEL_V; vel_control = true; break;
@@ -1659,7 +1661,7 @@ MulticopterPositionControl::task_main()
 
 		poll_subscriptions();
 		poll_ges_states();
-//		PX4_INFO("_ges_state: %d", _ges_state);
+		PX4_INFO("_ges_state: %d", _ges_state);
 
 		parameters_update(false);
 

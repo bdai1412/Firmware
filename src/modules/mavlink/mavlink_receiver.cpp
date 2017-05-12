@@ -285,6 +285,7 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		break;
 	case MAVLINK_MSG_ID_GESTURE:
 		handle_message_gesture(msg);
+		break;
 	default:
 		break;
 	}
@@ -766,7 +767,7 @@ MavlinkReceiver::handle_message_gesture(mavlink_message_t *msg)
 	gesture.reserved[1] = gesture_rcv.reserved[1];
 	gesture.reserved[2] = gesture_rcv.reserved[2];
 
-	printf("num is: %d\n", gesture.gesture_num);
+	// printf("num is: %d\n", gesture.gesture_num);
 
 	if (_gesture_pub == nullptr) {
 		_gesture_pub = orb_advertise(ORB_ID(gesture), &gesture);
