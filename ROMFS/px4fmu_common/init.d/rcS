@@ -191,7 +191,7 @@ then
 	set FMU_MODE pwm
 	set AUX_MODE pwm
 	set MAVLINK_F default
-	set MAVLINK_COMPANION_DEVICE /dev/ttyS2
+	#set MAVLINK_COMPANION_DEVICE /dev/ttyS2
 	set EXIT_ON_END no
 	set MAV_TYPE none
 	set FAILSAFE none
@@ -721,8 +721,8 @@ then
 		fi
 		if param compare SYS_COMPANION 419200
 		then
-			iridiumsbd start -d /dev/ttyS2
-			mavlink start -d /dev/iridium -b 19200 -m iridium -r 10
+			#iridiumsbd start -d /dev/ttyS2
+			#mavlink start -d /dev/iridium -b 19200 -m iridium -r 10
 		fi
 		if param compare SYS_COMPANION 1921600
 		then
@@ -838,7 +838,8 @@ then
 	then
 	else
 		# Start MAVLink
-		mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+		#mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+		nshterm /dev/ttyACM0 &
 	fi
 
 	#
@@ -1085,7 +1086,7 @@ then
 		if ver hwcmp PX4FMU_V4
 		then
 			# On Pixracer use Telem 2 port (TL2).
-			snapdragon_rc_pwm start -d /dev/ttyS2
+			#snapdragon_rc_pwm start -d /dev/ttyS2
 			fmu mode_pwm4
 		fi
 

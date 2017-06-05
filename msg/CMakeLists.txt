@@ -1,4 +1,4 @@
-############################################################################
+﻿############################################################################
 #
 #   Copyright (c) 2016 PX4 Development Team. All rights reserved.
 #
@@ -126,6 +126,8 @@ set(msg_file_names
 	vehicle_status_flags.msg
 	vtol_vehicle_status.msg
 	wind_estimate.msg
+	uav_data.msg
+	uground_data.msg
 	)
 
 # Get absolute paths

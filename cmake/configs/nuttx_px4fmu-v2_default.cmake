@@ -118,6 +118,11 @@ set(config_module_list
 	modules/vtol_att_control
 
 	#
+	#cooperation
+	#
+	modules/cooperation
+	
+	#
 	# Logging
 	#
 	modules/logger
