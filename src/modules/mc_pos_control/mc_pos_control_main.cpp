@@ -155,16 +155,36 @@ class Arc: public Shape {
 public:
 	Arc(){_angle = 0.0f; _velocity = 0.0f; _duration = 0.0f;};
 	// rotate in a fix plane. the angle between plane and horizon is the angle between vector (end -start) and horizon
+	
 	Arc(math::Vector<3> start, math::Vector<3> end, float vel, bool clockwise, float ang = PI / 2.0f) {
+		
 		float vertical = (clockwise == true) ? 1.0f : -1.0f; //clockwise or anticlockwise
 		math::Vector<3> left_or_right(0.0f, 0.0f, vertical);
+
+		bool iscicle = (ang >= 2.0f*PI);
+
+		//ang = 2Pi mean there is an cicle. and end- start is the D of the cicle
+		if(iscicle) {
+			_angle = ang;
+			_velocity = vel;
+			_start = start;
+			_center = (end + start) / 2.0f;
+			_duration = (_start - _center).length() * ang / _velocity;
+
+			ang = PI;
+		}
 
 		float dist = (end - start).length()/2.0f * (1.0f/sinf(ang/2.0f) - 1.0f/tanf(ang/2.0f));
 
 		math::Vector<3> middle = (end + start) / 2.0f +
 				((end - start) % left_or_right).normalized() * dist;
 
-		*this = Arc(start, middle, end, vel);
+		if (iscicle) {
+			_rataxis = (start - _center) % (middle-_center).normalized();
+
+		} else {
+			*this = Arc(start, middle, end, vel);
+		}
 	};
 
 //			const Arc& operator=(const Arc& arc) {
@@ -337,10 +357,6 @@ public:
 		if(index == _num) index--; // if this is the last shape and time is run out
 		next = _shapes[index]->next_sp(_shapes[index]->_duration -(tim - dt));
 
-		// PX4_INFO("%8.4f %8.4f %8.4f %8.4f %8.4f %8.4f",
-		// (double)next._pos(0),(double)next._pos(1),(double)next._pos(2),
-		// (double)next._vel(0),(double)next._vel(1),(double)next._vel(2));
-
 		if(dt > tim) next._vel.zero(); // the end of the path
 		return 0;
 	}
@@ -349,131 +365,137 @@ public:
 	Shape* _shapes[20];
 };
 
-math::Vector<3> Fix_Point(0.0f, 0.0f, -1.2f);
+float plane_height = -1.2f;
+
+math::Vector<3> Fix_Points(-2.0f, 0.0f, plane_height);
 struct Path_Point: public Path {
 	Path_Point(){
-		_shapes[0] = new Point(Fix_Point);
+		_shapes[0] = new Point(Fix_Points);
 		_num = 1;
 	}
 };
 
-math::Vector<3> Line_Shape[2] = {
-		math::Vector<3>(-0.5f, -0.5f, -1.0f),
-		math::Vector<3>(0.5f, 0.5f, -1.5f)
-};
-struct Path_Line: public Path {
-	Path_Line(float vel){
-		_shapes[0] = new Line(Line_Shape[0], Line_Shape[1], vel);
-		_num = 1;
+math::Vector<3> Lines_Points[2] = {
+	math::Vector<3>(3.0f, 0.0f, plane_height),
+	math::Vector<3>(-2.0f, 0.0f, plane_height)};
+struct Path_Lines: public Path {
+	Path_Lines(float vel) {
+		_shapes[0] = new Line(Lines_Points[0],Lines_Points[1],vel);
+		_shapes[1] = new Point(Lines_Points[1], 5.0f);
+		_shapes[2] = new Line(Lines_Points[1],Lines_Points[0],vel);
+		_num = 3;
 	}
 };
 
-math::Vector<3> Arc_Shape[2] = {
-		math::Vector<3>(.0f, .0f, -1.2f),
-		math::Vector<3>(0.5f, 0.5f, -1.7f)
-};
-struct Path_Arc: public Path {
-	Path_Arc(float vel){
-		_shapes[0] = new Arc(Arc_Shape[0],Arc_Shape[1], vel, true);
-		_num = 1;
+math::Vector<3> Sins_Points[2] = {
+	math::Vector<3>(2.0f, 0.0f, plane_height),
+	math::Vector<3>(-2.0f, 0.0f, plane_height)};
+struct Path_Sins: public Path {
+	Path_Sins(float vel) {
+		_shapes[0] = new Sin(Sins_Points[0],Sins_Points[1],vel, 0.5f);
+		_shapes[1] = new Point(Sins_Points[1], 5.0f);
+		_shapes[2] = new Sin(Sins_Points[1],Sins_Points[0],vel, 0.5f);
+		_num = 3;
 	}
 };
 
-// sin path
-float Sin_height = -1.2f;
-math::Vector<3> Sin_Shape[2] = {
-	math::Vector<3>(0.0f,0.0f,Sin_height),
-	math::Vector<3>(-2.0f,-2.0f,Sin_height)};
+math::Vector<3> Cicles_Shape[10] = {
+	math::Vector<3>(2.0f,-2.0f,plane_height),
+	math::Vector<3>(2.0f,0.0f,plane_height),
+	math::Vector<3>(1.0f,1.0f,plane_height),
+	math::Vector<3>(1.0f,-1.0f,plane_height),
+	math::Vector<3>(0.0f,1.0f,plane_height),
+	math::Vector<3>(0.0f,-1.0f,plane_height),
+	math::Vector<3>(-1.0f,1.0f,plane_height),
+	math::Vector<3>(-1.0f,-1.0f,plane_height),
+	math::Vector<3>(-2.0f,-0.0f,plane_height),
+	math::Vector<3>(-2.0f,-2.0f,plane_height),
+};
 
-struct Path_Sin : public Path{
-	Path_Sin(float vel){
-		_shapes[0] = new Sin(Sin_Shape[0],Sin_Shape[1], vel, 0.5f, PI/4.0f);
-		_num = 1;
+struct Path_Cicles : public Path{
+	Path_Cicles(float vel){
+		_shapes[0] = new Line(Cicles_Shape[0],Cicles_Shape[1], vel);
+		_shapes[1] = new Arc(Cicles_Shape[1],Cicles_Shape[2], vel, true, PI/2.0f);
+		_shapes[2] = new Arc(Cicles_Shape[2],Cicles_Shape[3], vel, true, PI*2.0f);
+		_shapes[3] = new Line(Cicles_Shape[2],Cicles_Shape[4], vel);
+		_shapes[4] = new Arc(Cicles_Shape[4],Cicles_Shape[5], vel, true, PI*2.0f);
+		_shapes[5] = new Line(Cicles_Shape[4],Cicles_Shape[6], vel);
+		_shapes[6] = new Arc(Cicles_Shape[6],Cicles_Shape[7], vel, true, PI*2.0f);
+		_shapes[7] = new Arc(Cicles_Shape[6],Cicles_Shape[8], vel, true, PI/2.0f);
+		_shapes[8] = new Line(Cicles_Shape[8],Cicles_Shape[9], vel);
+		_num = 9;
 	}
 };
 
+// shape of W
+math::Vector<3> W_Shape[5] = {
+	math::Vector<3>(2.5f,-2.0f,plane_height),
+	math::Vector<3>(1.0f,1.0f,plane_height),
+	math::Vector<3>(0.0f,-1.0f,plane_height),
+	math::Vector<3>(-1.0f,1.0f,plane_height),
+	math::Vector<3>(-2.5f,-2.0f,plane_height),
+};
 
-//	the path of _|_
-float L_height = -1.2f;
-math::Vector<3> L_Shape[7] = {
-	math::Vector<3>(2.0f,2.0f,L_height),
-	math::Vector<3>(2.0f,1.0f,L_height),
-	math::Vector<3>(1.0f,0.0f,L_height),
-	math::Vector<3>(-2.0f,0.0f,L_height),
-	math::Vector<3>(1.0f,0.0f,L_height),
-	math::Vector<3>(2.0f,-1.0f,L_height),
-	math::Vector<3>(2.0f,-2.0f,L_height)};
-
-struct Path_L : public Path{
-	Path_L(float vel){
-		_shapes[0] = new Line(L_Shape[0],L_Shape[1], vel);
-		_shapes[1] = new Arc(L_Shape[1],L_Shape[2], vel, false);
-		_shapes[2] = new Line(L_Shape[2],L_Shape[3], vel);
-		_shapes[3] = new Point(L_Shape[3], 5.0f);
-		_shapes[4] = new Line(L_Shape[3],L_Shape[4], vel);
-		_shapes[5] = new Arc(L_Shape[4],L_Shape[5], vel, false);
-		_shapes[6] = new Line(L_Shape[5],L_Shape[6], vel);
+struct Path_Shape_W : public Path{
+	Path_Shape_W(float vel){
+		_shapes[0] = new Line(W_Shape[0],W_Shape[1], vel);
+		_shapes[1] = new Point(W_Shape[1], 3.0f);
+		_shapes[2] = new Line(W_Shape[1],W_Shape[2], vel);
+		_shapes[3] = new Point(W_Shape[2], 3.0f);
+		_shapes[4] = new Line(W_Shape[2],W_Shape[3], vel);
+		_shapes[5] = new Point(W_Shape[3], 3.0f);
+		_shapes[6] = new Line(W_Shape[3],W_Shape[4], vel);
 		_num = 7;
 	}
 };
 
-//	the path of S
-float S_height = -1.2f;
-math::Vector<3> S_Shape[6] = {
-	math::Vector<3>(-2.0f,3.0f,S_height),
-	math::Vector<3>(-2.0f,-2.0f,S_height),
-	math::Vector<3>(0.0f,-2.0f,S_height),
-	math::Vector<3>(0.0f,2.0f,S_height),
-	math::Vector<3>(2.0f,2.0f,S_height),
-	math::Vector<3>(2.0f,-3.0f,S_height)};
+// shape of S
+math::Vector<3> S_Shape[10] = {
+	math::Vector<3>(2.0f,-2.5f,plane_height),
+	math::Vector<3>(2.0f,2.0f,plane_height),
+	math::Vector<3>(1.0f,2.0f,plane_height),
+	math::Vector<3>(1.0f,-2.0f,plane_height),
+	math::Vector<3>(0.0f,-2.0f,plane_height),
+	math::Vector<3>(0.0f,2.0f,plane_height),
+	math::Vector<3>(-1.0f,2.0f,plane_height),
+	math::Vector<3>(-1.0f,-2.0f,plane_height),
+	math::Vector<3>(-2.0f,-2.0f,plane_height),
+	math::Vector<3>(-2.0f,2.5f,plane_height),
+};
 
-struct Path_S:public Path{
-	Path_S(float vel){
+struct Path_Shape_S:public Path{
+	Path_Shape_S(float vel){
 		_shapes[0] = new Line(S_Shape[0],S_Shape[1], vel);
 		_shapes[1] = new Arc(S_Shape[1],S_Shape[2], vel, true, PI);
 		_shapes[2] = new Line(S_Shape[2],S_Shape[3], vel);
 		_shapes[3] = new Arc(S_Shape[3],S_Shape[4], vel, false, PI);
 		_shapes[4] = new Line(S_Shape[4],S_Shape[5], vel);
-		_num = 5;
+		_shapes[5] = new Arc(S_Shape[5],S_Shape[6], vel, true, PI);
+		_shapes[6] = new Line(S_Shape[6],S_Shape[7], vel);
+		_shapes[7] = new Arc(S_Shape[7],S_Shape[8], vel, false, PI);
+		_shapes[8] = new Line(S_Shape[8],S_Shape[9], vel);
+		_num = 9;
 	}
 };
-
-float SinD_height = -1.2f;
-math::Vector<3> SinD_Shape[3] = {
-	math::Vector<3>(2.0f,0.0f,SinD_height),
-	math::Vector<3>(-2.0f,0.0f,SinD_height),
-	math::Vector<3>(2.0f,0.0f,SinD_height)};
-
-struct Path_SinD : public Path{
-	Path_SinD(float vel){
-		_shapes[0] = new Sin(SinD_Shape[0],SinD_Shape[1], vel, 0.5f);
-		_shapes[1] = new Point(SinD_Shape[1], 5.0f);
-		_shapes[2] = new Sin(SinD_Shape[1],SinD_Shape[2], vel, 1.0f);
-		_num = 3;
-	}
-};
-
 
 enum shapes {
-	POINT,	//fix position setpoint
-	LINE,	//line between two point
-	ARC,	// arc shape
-	SIN,
-	SHAPE_L,	//__|__ shape like L
-	SHAPE_S,
-	SHAPE_Sin,
+	POINT = 0,	//fix position setpoint
+	LINES,	// shape of two line
+	SINS,
+	CICLES,	//shape of cicles
+	SHAPE_W, //shape of W
+	SHAPE_S,	// shape of SSS
 };
 
 static Path* get_path(shapes shape, float vel = .0f){
 	Path* path;
 	switch(shape) {
 	case POINT: path = new Path_Point(); break;
-	case LINE:	path = new Path_Line(vel); break;
-	case ARC:	path = new Path_Arc(vel); break;
-	case SIN:	path = new Path_Sin(vel); break;
-	case SHAPE_L:	path = new Path_L(vel); break;
-	case SHAPE_S:	path = new Path_S(vel); break;
-	case SHAPE_Sin:	path = new Path_SinD(vel); break;
+	case LINES:	path = new Path_Lines(vel); break;
+	case SINS:  path = new Path_Sins(vel); break;
+	case CICLES:	path = new Path_Cicles(vel); break;
+	case SHAPE_W:	path = new Path_Shape_W(vel); break;
+	case SHAPE_S:	path = new Path_Shape_S(vel); break;
 	default:path = nullptr; break;
 	}
 	return path;
@@ -558,6 +580,8 @@ private:
 
 	control::BlockParamFloat _manual_thr_min;
 	control::BlockParamFloat _manual_thr_max;
+
+	control::BlockParamInt _path_type;
 
 	control::BlockDerivative _vel_x_deriv;
 	control::BlockDerivative _vel_y_deriv;
@@ -794,6 +818,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_global_vel_sp{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
+	_path_type(this, "PATH_TYPE"),
 	_vel_x_deriv(this, "VELD"),
 	_vel_y_deriv(this, "VELD"),
 	_vel_z_deriv(this, "VELD"),
@@ -1289,6 +1314,8 @@ MulticopterPositionControl::control_manual(float dt)
 
 		static float path_time = 0.0f;
 		static float path_over_time = 0.0f;
+		static status last_statu = statu;
+		last_statu = statu;
 		if (_manual.aux3 < -0.5f) {
 			path_over_time = path_time = 0.0f;
 			last_pause_stamp = now;
@@ -1304,17 +1331,24 @@ MulticopterPositionControl::control_manual(float dt)
 
 		if (statu != DISABLE) {
 			// get the path at the first time
-//			static Path_Tracking::Path* path = Path_Tracking::get_path(Path_Tracking::POINT);
-			static Path_Tracking::Path* path = Path_Tracking::get_path(Path_Tracking::SHAPE_Sin, 0.5f);
-
-			int ret = 0;
-			if (statu == FOLLOWING) {
-				ret = path->get_next(path_time, next);
-			}
+			static Path_Tracking::Path* path = Path_Tracking::get_path(Path_Tracking::POINT);;
+			if (last_statu == DISABLE && _path_type.get() != Path_Tracking::POINT) 
+				path = Path_Tracking::get_path((Path_Tracking::shapes)_path_type.get(), 0.5f);
+			
+			int ret = path->get_next(path_time, next);
 			if (statu == PAUSE) next._vel.zero();
+			else PX4_INFO("%8.4f %8.4f %8.4f %8.4f %8.4f %8.4f",
+					(double)_pos_sp(0),(double)_pos_sp(1),(double)_pos_sp(2),
+					(double)next._vel(0),(double)next._vel(1),(double)next._vel(2));
 			_pos_sp = next._pos;
-
+			
 			if(ret == 0) return;
+		}
+
+		// if switch back to disable
+		if (last_statu != DISABLE) {
+			_reset_pos_sp = true;
+			_reset_alt_sp = true;
 		}
 	}
 
@@ -2234,7 +2268,7 @@ MulticopterPositionControl::task_main()
 					} else {
 						thrust_sp = vel_err.emult(_params.vel_p) + _vel_err_d.emult(_params.vel_d) + thrust_int;
 					}
-
+		
 					if (_pos_sp_triplet.current.type == position_setpoint_s::SETPOINT_TYPE_TAKEOFF
 					    && !_takeoff_jumped && !_control_mode.flag_control_manual_enabled) {
 						// for jumped takeoffs use special thrust setpoint calculated above
@@ -2251,7 +2285,7 @@ MulticopterPositionControl::task_main()
 						thrust_sp(2) = 0.0f;
 					}
 
-					/* limit thrust vector and check for saturation */
+/* limit thrust vector and check for saturation */
 					bool saturation_xy = false;
 					bool saturation_z = false;
 
