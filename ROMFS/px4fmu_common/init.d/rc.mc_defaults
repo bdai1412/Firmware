@@ -33,3 +33,7 @@ if param compare PWM_DISARMED 0
 then
 	param set PWM_DISARMED 900
 fi
+
+param set RC_MAP_AUX1 6
+param set RC_MAP_AUX2 7
+param set RC_MAP_AUX3 8

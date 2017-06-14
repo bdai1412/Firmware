@@ -77,6 +77,8 @@
 #include <uORB/topics/vehicle_local_position_setpoint.h>
 #include <uORB/topics/vehicle_land_detected.h>
 
+#include <uORB/topics/uground_data.h>
+
 #include <systemlib/systemlib.h>
 #include <systemlib/mavlink_log.h>
 #include <mathlib/mathlib.h>
@@ -140,6 +142,16 @@ private:
 	int		_local_pos_sp_sub;		/**< offboard local position setpoint */
 	int		_global_vel_sp_sub;		/**< offboard global velocity setpoint */
 
+	int 	_uground_data_sub;
+	bool	_is_ugv_updated;	// if there is an new data of ugv
+	bool	_is_ugv_init;		// true when ugv zero point is init;
+	struct {
+		float x;
+		float y;
+	}_pos_ugv_sp;
+	float _ref_ugv_alt;
+	struct map_projection_reference_s _ref_ugv;
+
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
 	orb_advert_t	_global_vel_sp_pub;		/**< vehicle global velocity setpoint publication */
@@ -157,6 +169,8 @@ private:
 	struct position_setpoint_triplet_s		_pos_sp_triplet;	/**< vehicle global position setpoint triplet */
 	struct vehicle_local_position_setpoint_s	_local_pos_sp;		/**< vehicle local position setpoint */
 	struct vehicle_global_velocity_setpoint_s	_global_vel_sp;		/**< vehicle global velocity setpoint */
+
+	struct uground_data_s	_uground_data;
 
 	control::BlockParamFloat _manual_thr_min;
 	control::BlockParamFloat _manual_thr_max;
@@ -377,6 +391,11 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_local_pos_sub(-1),
 	_pos_sp_triplet_sub(-1),
 	_global_vel_sp_sub(-1),
+	_uground_data_sub(-1),
+	_is_ugv_updated(false),
+	_is_ugv_init(false),
+	_pos_ugv_sp{},
+	_ref_ugv_alt(.0f),
 
 	/* publications */
 	_att_sp_pub(nullptr),
@@ -394,6 +413,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_pos_sp_triplet{},
 	_local_pos_sp{},
 	_global_vel_sp{},
+	_uground_data{},
 	_manual_thr_min(this, "MANTHR_MIN"),
 	_manual_thr_max(this, "MANTHR_MAX"),
 	_vel_x_deriv(this, "VELD"),
@@ -427,6 +447,7 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	// Make the quaternion valid for control state
 	_ctrl_state.q[0] = 1.0f;
 
+	memset(&_ref_ugv, 0, sizeof(_ref_ugv));
 	memset(&_ref_pos, 0, sizeof(_ref_pos));
 
 	_params.pos_p.zero();
@@ -752,6 +773,16 @@ MulticopterPositionControl::poll_subscriptions()
 		_vz_reset_counter = _local_pos.vz_reset_counter;
 		_vxy_reset_counter = _local_pos.vxy_reset_counter;
 	}
+
+	static hrt_abstime last_ugv_time = hrt_absolute_time();
+	orb_check(_uground_data_sub, &updated);
+	if (updated) {
+		_is_ugv_updated = true;
+		orb_copy(ORB_ID(uground_data), _uground_data_sub, &_uground_data);
+	} else if (_is_ugv_updated && (hrt_absolute_time() - last_ugv_time) > 2e6) {
+		// constrain delay up to 1 second
+		_is_ugv_updated = false;
+	}
 }
 
 float
@@ -922,61 +953,84 @@ MulticopterPositionControl::control_manual(float dt)
 
 	/* horizontal axes */
 	if (_control_mode.flag_control_position_enabled) {
-		/* check for pos. hold */
-		if (fabsf(req_vel_sp(0)) < _params.hold_xy_dz && fabsf(req_vel_sp(1)) < _params.hold_xy_dz) {
-			if (!_pos_hold_engaged) {
+		// in follow ugv mode
+		if (_manual.aux1 > -0.5f && _is_ugv_init && _is_ugv_updated) {
+			_run_pos_control = true;
+			_pos_hold_engaged = false;
 
-				float vel_xy_mag = sqrtf(_vel(0) * _vel(0) + _vel(1) * _vel(1));
-
-				if (_params.hold_max_xy < FLT_EPSILON || vel_xy_mag < _params.hold_max_xy) {
-					/* reset position setpoint to have smooth transition from velocity control to position control */
-					_pos_hold_engaged = true;
-					_pos_sp(0) = _pos(0);
-					_pos_sp(1) = _pos(1);
-
-				} else {
-					_pos_hold_engaged = false;
-				}
-			}
+			_pos_sp(0) = _pos_ugv_sp.x;
+			_pos_sp(1) = _pos_ugv_sp.y;
 
 		} else {
-			_pos_hold_engaged = false;
-		}
+			/* check for pos. hold */
+			if (fabsf(req_vel_sp(0)) < _params.hold_xy_dz && fabsf(req_vel_sp(1)) < _params.hold_xy_dz) {
+				if (!_pos_hold_engaged) {
 
-		/* set requested velocity setpoint */
-		if (!_pos_hold_engaged) {
-			_pos_sp(0) = _pos(0);
-			_pos_sp(1) = _pos(1);
-			_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
-			_vel_sp(0) = req_vel_sp_scaled(0);
-			_vel_sp(1) = req_vel_sp_scaled(1);
+					float vel_xy_mag = sqrtf(_vel(0) * _vel(0) + _vel(1) * _vel(1));
+
+					if (_params.hold_max_xy < FLT_EPSILON || vel_xy_mag < _params.hold_max_xy) {
+						/* reset position setpoint to have smooth transition from velocity control to position control */
+						_pos_hold_engaged = true;
+						_pos_sp(0) = _pos(0);
+						_pos_sp(1) = _pos(1);
+
+					} else {
+						_pos_hold_engaged = false;
+					}
+				}
+
+			} else {
+				_pos_hold_engaged = false;
+			}
+
+			/* set requested velocity setpoint */
+			if (!_pos_hold_engaged) {
+				_pos_sp(0) = _pos(0);
+				_pos_sp(1) = _pos(1);
+				_run_pos_control = false; /* request velocity setpoint to be used, instead of position setpoint */
+				_vel_sp(0) = req_vel_sp_scaled(0);
+				_vel_sp(1) = req_vel_sp_scaled(1);
+			}
 		}
 	}
 
 	/* vertical axis */
 	if (_control_mode.flag_control_altitude_enabled) {
-		/* check for pos. hold */
-		if (fabsf(req_vel_sp(2)) < FLT_EPSILON) {
-			if (!_alt_hold_engaged) {
-				if (_params.hold_max_z < FLT_EPSILON || fabsf(_vel(2)) < _params.hold_max_z) {
-					/* reset position setpoint to have smooth transition from velocity control to position control */
-					_alt_hold_engaged = true;
-					_pos_sp(2) = _pos(2);
 
-				} else {
-					_alt_hold_engaged = false;
+		// if enable altitude from ground control station (must in follow ugv mode)
+		if (_manual.aux3 > 0.5f && _is_ugv_init && _is_ugv_updated
+				&& _manual.aux1 > -0.5f && _control_mode.flag_control_position_enabled){
+			// limit the altitude
+			_pos_sp(2) = -(_uground_data.desiredAltitude - _ref_ugv_alt);
+			if (_pos_sp(2) > 0) _pos_sp(2) = 0.0f;
+
+			_alt_hold_engaged = false;
+			_run_alt_control =  true;
+		} else {
+
+			/* check for pos. hold */
+			if (fabsf(req_vel_sp(2)) < FLT_EPSILON) {
+				if (!_alt_hold_engaged) {
+					if (_params.hold_max_z < FLT_EPSILON || fabsf(_vel(2)) < _params.hold_max_z) {
+						/* reset position setpoint to have smooth transition from velocity control to position control */
+						_alt_hold_engaged = true;
+						_pos_sp(2) = _pos(2);
+
+					} else {
+						_alt_hold_engaged = false;
+					}
 				}
+
+			} else {
+				_alt_hold_engaged = false;
+				_pos_sp(2) = _pos(2);
 			}
 
-		} else {
-			_alt_hold_engaged = false;
-			_pos_sp(2) = _pos(2);
-		}
-
-		/* set requested velocity setpoint */
-		if (!_alt_hold_engaged) {
-			_run_alt_control = false; /* request velocity setpoint to be used, instead of altitude setpoint */
-			_vel_sp(2) = req_vel_sp_scaled(2);
+			/* set requested velocity setpoint */
+			if (!_alt_hold_engaged) {
+				_run_alt_control = false; /* request velocity setpoint to be used, instead of altitude setpoint */
+				_vel_sp(2) = req_vel_sp_scaled(2);
+			}
 		}
 	}
 }
@@ -1320,6 +1374,8 @@ MulticopterPositionControl::task_main()
 	_local_pos_sp_sub = orb_subscribe(ORB_ID(vehicle_local_position_setpoint));
 	_global_vel_sp_sub = orb_subscribe(ORB_ID(vehicle_global_velocity_setpoint));
 
+	_uground_data_sub = orb_subscribe(ORB_ID(uground_data));
+
 
 	parameters_update(true);
 
@@ -1372,6 +1428,20 @@ MulticopterPositionControl::task_main()
 		}
 
 		poll_subscriptions();
+
+		// init ugv position in NED
+		if(_manual.aux2 > 0.5f && _is_ugv_updated && !_is_ugv_init){
+			map_projection_init(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLatitude);
+			_ref_ugv_alt = _uground_data.targetAltitude;
+			_is_ugv_init = true;
+		} else if(_manual.aux2 < -0.5f){
+			_is_ugv_init = false;
+		}
+		// get ugv position in NED coordination
+		if (_is_ugv_init && _is_ugv_updated) {
+			map_projection_project(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLatitude,
+					&_pos_ugv_sp.x, &_pos_ugv_sp.y);
+		}
 
 		parameters_update(false);
 
@@ -1548,6 +1618,11 @@ MulticopterPositionControl::task_main()
 				if (_run_pos_control) {
 					_vel_sp(0) = (_pos_sp(0) - _pos(0)) * _params.pos_p(0);
 					_vel_sp(1) = (_pos_sp(1) - _pos(1)) * _params.pos_p(1);
+
+					if (_is_ugv_init && _is_ugv_updated) {
+						_vel_sp(0) += _uground_data.targetVelocity * cosf(_uground_data.targetHeading);
+						_vel_sp(1) += _uground_data.targetVelocity * sinf(_uground_data.targetHeading);
+					}
 				}
 
 				// guard against any bad velocity values
