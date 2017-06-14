@@ -45,4 +45,5 @@ mc_pos_control start
 #
 land_detector start multicopter
 
-rotation_platform_uart start
+
+#mavlink stop-all

@@ -181,7 +181,7 @@ set(config_module_list
 	#examples/hwtest
 
 	#User specialization
-	modules/rotation_platform_uart
+	modules/cooperation
 )
 
 set(config_extra_builtin_cmds

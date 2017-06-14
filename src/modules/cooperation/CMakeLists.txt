@@ -1,4 +1,4 @@
-############################################################################
+﻿############################################################################
 #
 #   Copyright (c) 2015 PX4 Development Team. All rights reserved.
 #
@@ -31,13 +31,16 @@
 #
 ############################################################################
 px4_add_module(
-    MODULE modules__rotation_platform_uart
-    MAIN rotation_platform_uart
-    STACK 1200
-    SRCS
-        rotation_platform_uart_main.cpp
-        uart/uart.cpp
-    DEPENDS
-        platforms__common
-    )
-# vim: set noet ft=cmake fenc=utf-8 ff=unix : 
+	MODULE modules__cooperation
+	MAIN cooperation
+	COMPILE_FLAGS
+	STACK_MAIN 1200
+	STACK_MAX 4000
+	SRCS
+		cooperation_main.cpp
+		Utils/Protocol.cpp
+		Utils/SerialPort.cpp
+	DEPENDS
+		platforms__common
+	)
+# vim: set noet ft=cmake fenc=utf-8 ff=unix :
