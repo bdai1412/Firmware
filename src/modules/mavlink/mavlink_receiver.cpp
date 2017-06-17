@@ -132,6 +132,7 @@ MavlinkReceiver::MavlinkReceiver(Mavlink *parent) :
 	_control_state_pub(nullptr),
 	_gps_inject_data_pub(nullptr),
 	_command_ack_pub(nullptr),
+	_cooperation_pub(nullptr),
 	_control_mode_sub(orb_subscribe(ORB_ID(vehicle_control_mode))),
 	_hil_frames(0),
 	_old_timestamp(0),
@@ -277,6 +278,10 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 
 	case MAVLINK_MSG_ID_LOGGING_ACK:
 		handle_message_logging_ack(msg);
+		break;
+
+	case MAVLINK_MSG_ID_COOPERATION:
+		handle_message_cooperation(msg);
 		break;
 
 	default:
@@ -743,6 +748,31 @@ MavlinkReceiver::handle_message_att_pos_mocap(mavlink_message_t *msg)
 	} else {
 		orb_publish(ORB_ID(att_pos_mocap), _att_pos_mocap_pub, &att_pos_mocap);
 	}
+}
+
+void
+MavlinkReceiver::handle_message_cooperation(mavlink_message_t *msg) {
+
+	mavlink_cooperation_t cooperation;
+	mavlink_msg_cooperation_decode(msg, &cooperation);
+
+	struct uground_data_s uground_data = {};
+	uground_data.timestamp = hrt_absolute_time();
+	uground_data.usvTimestamp = cooperation.usvTimestamp;
+	uground_data.targetLatitude = cooperation.Lat;
+	uground_data.targetLongitude = cooperation.Lon;
+	uground_data.targetAltitude = cooperation.Alt;
+	uground_data.desiredAltitude = cooperation.Alt_d;
+	uground_data.targetHeading = cooperation.Yaw;
+	uground_data.targetVelocity = cooperation.V;
+	uground_data.setting = cooperation.setting;
+
+    if (_cooperation_pub == nullptr) {
+    	_cooperation_pub = orb_advertise(ORB_ID(uground_data), &uground_data);
+
+    } else {
+        orb_publish(ORB_ID(uground_data), _cooperation_pub, &uground_data);
+    }
 }
 
 void

@@ -779,6 +779,10 @@ MulticopterPositionControl::poll_subscriptions()
 	if (updated) {
 		_is_ugv_updated = true;
 		orb_copy(ORB_ID(uground_data), _uground_data_sub, &_uground_data);
+		_uground_data.targetLatitude *= 180 / 3.14159265358979;
+		_uground_data.targetLongitude *= 180 / 3.14159265358979;
+
+		last_ugv_time = hrt_absolute_time();
 	} else if (_is_ugv_updated && (hrt_absolute_time() - last_ugv_time) > 2e6) {
 		// constrain delay up to 1 second
 		_is_ugv_updated = false;
@@ -961,6 +965,8 @@ MulticopterPositionControl::control_manual(float dt)
 			_pos_sp(0) = _pos_ugv_sp.x;
 			_pos_sp(1) = _pos_ugv_sp.y;
 
+//			PX4_INFO("ugv_sp: %8.4f, %8.4f",(double)_pos_ugv_sp.x, (double)_pos_ugv_sp.y);
+
 		} else {
 			/* check for pos. hold */
 			if (fabsf(req_vel_sp(0)) < _params.hold_xy_dz && fabsf(req_vel_sp(1)) < _params.hold_xy_dz) {
@@ -1003,6 +1009,8 @@ MulticopterPositionControl::control_manual(float dt)
 			// limit the altitude
 			_pos_sp(2) = -(_uground_data.desiredAltitude - _ref_ugv_alt);
 			if (_pos_sp(2) > 0) _pos_sp(2) = 0.0f;
+
+//			PX4_INFO("ugv_sp_z: %8.4f", (double)_pos_sp(2));
 
 			_alt_hold_engaged = false;
 			_run_alt_control =  true;
@@ -1431,16 +1439,28 @@ MulticopterPositionControl::task_main()
 
 		// init ugv position in NED
 		if(_manual.aux2 > 0.5f && _is_ugv_updated && !_is_ugv_init){
-			map_projection_init(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLatitude);
+			map_projection_init(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLongitude);
+
+			// calculate pos error when gps has viration
+			double ref_lat = _uground_data.targetLatitude;
+			double ref_lon = _uground_data.targetLongitude;
+			map_projection_reproject(&_ref_ugv, -_pos(0), -_pos(1), &ref_lat, &ref_lon);
+
+			map_projection_init(&_ref_ugv, ref_lat, ref_lon);
+
 			_ref_ugv_alt = _uground_data.targetAltitude;
 			_is_ugv_init = true;
+
+			mavlink_log_info(&_mavlink_log_pub, "init is: %12.8f,%12.8f",
+					(double)_uground_data.targetLatitude, (double) _uground_data.targetLongitude);
 		} else if(_manual.aux2 < -0.5f){
 			_is_ugv_init = false;
 		}
 		// get ugv position in NED coordination
 		if (_is_ugv_init && _is_ugv_updated) {
-			map_projection_project(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLatitude,
+			map_projection_project(&_ref_ugv, _uground_data.targetLatitude, _uground_data.targetLongitude,
 					&_pos_ugv_sp.x, &_pos_ugv_sp.y);
+//			PX4_INFO("ugv now is: %8.4f, %8.4f", (double)_pos_ugv_sp.x,(double)_pos_ugv_sp.y);
 		}
 
 		parameters_update(false);
@@ -1618,11 +1638,14 @@ MulticopterPositionControl::task_main()
 				if (_run_pos_control) {
 					_vel_sp(0) = (_pos_sp(0) - _pos(0)) * _params.pos_p(0);
 					_vel_sp(1) = (_pos_sp(1) - _pos(1)) * _params.pos_p(1);
-
-					if (_is_ugv_init && _is_ugv_updated) {
+					if (_is_ugv_init && _is_ugv_updated && _manual.aux1 > 0.5f) {
 						_vel_sp(0) += _uground_data.targetVelocity * cosf(_uground_data.targetHeading);
 						_vel_sp(1) += _uground_data.targetVelocity * sinf(_uground_data.targetHeading);
+//						PX4_INFO("vel_forward is : %8.4f, %8.4f",(double)(_uground_data.targetVelocity * cosf(_uground_data.targetHeading)),
+//								(double)(_uground_data.targetVelocity * sinf(_uground_data.targetHeading)));
 					}
+//					PX4_INFO("pos is: %8.4f, %8.4f",(double)_pos(0),(double)_pos(1));
+//					PX4_INFO("pos_sp is: %8.4f, %8.4f",(double)_pos_sp(0),(double)_pos_sp(1));
 				}
 
 				// guard against any bad velocity values
@@ -2305,7 +2328,7 @@ MulticopterPositionControl::start()
 	_control_task = px4_task_spawn_cmd("mc_pos_control",
 					   SCHED_DEFAULT,
 					   SCHED_PRIORITY_MAX - 5,
-					   1900,
+					   3000,
 					   (px4_main_t)&MulticopterPositionControl::task_main_trampoline,
 					   nullptr);
 

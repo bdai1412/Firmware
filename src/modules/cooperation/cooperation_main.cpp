@@ -123,8 +123,15 @@ int open_uart(int baud, const char *uart_name)
         ::close(_uart_fd);
         return -1;
     }
+
+    /* Clear ONLCR flag (which appends a CR for every LF) */
+//    uart_config.c_oflag &= ~ONLCR;
+    /* no parity, one stop bit */
+//    uart_config.c_oflag &= ~ONLCR;
     uart_config.c_cflag &= ~(CSTOPB | PARENB);
+    /*no flow contro*/
     uart_config.c_cflag &= ~CRTSCTS;
+//    uart_config.c_iflag &= ~(IXON);
     uart_config.c_cflag |= CS8;
 
     uart_config.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG); /*Input*/
@@ -159,12 +166,12 @@ int cooperation_main(int argc, char *argv[])
         }
         thread_should_exit = false;
         cooperation_task = px4_task_spawn_cmd("cooperation",
-								  SCHED_DEFAULT,
-								  SCHED_PRIORITY_MAX - 5,
-								  4000,
-								  cooperation_thread_main,
-								  (argv) ? (char *const *)&argv[2] : (char *const *)NULL);
-        exit(0);
+                                              SCHED_DEFAULT,
+                                              SCHED_PRIORITY_MAX,
+                                              4000,
+                                              cooperation_thread_main,
+                                               (argv) ? (char *const *)&argv[2] : (char *const *)NULL);
+        exit(0);;
     }
 
     if (!strcmp(argv[1], "stop")) {
@@ -251,14 +258,16 @@ int cooperation_thread_main(int argc, char *argv[])
             int bytesRead  = 0;
 //            int bytesWrite = 0;
             //read uart port
-            bytesRead = read(_uart_fd, bufferReceived.data, 1024);
-            static int i = 0;
-            PX4_INFO("bytesRead:%d, i: %d", bytesRead,i);
+            bytesRead = read(_uart_fd, bufferReceived.data + bufferReceived.length, 256);
+            PX4_INFO("length: %d", bytesRead);
+            bufferReceived.length += bytesRead;
             if(bytesRead > 0) {
 
                 packetReceived = protol.BufferDecode(&bufferReceived);
+                 PX4_INFO("bufferReceived.data[1]:%d,bufferReceived.data[2]:%d",bufferReceived.data[1],bufferReceived.data[2]);
                 if(packetReceived.id == 1 && packetReceived.length == 45)
                 {
+                    // PX4_INFO("bufferReceived.id:%d,bufferReceived.length:%d",packetReceived.id,packetReceived.length);
                     memcpy(&_uground_data.usvTimestamp, packetReceived.data, sizeof(double));
                     memcpy(&_uground_data.setting, packetReceived.data + 8, sizeof(unsigned char));
                     memcpy(&_uground_data.targetLatitude, packetReceived.data + 9, sizeof(double));

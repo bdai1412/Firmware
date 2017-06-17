@@ -80,6 +80,8 @@
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/collision_report.h>
 
+#include <uORB/topics/uground_data.h>
+
 
 #include "mavlink_ftp.h"
 
@@ -149,6 +151,8 @@ private:
 	void handle_message_battery_status(mavlink_message_t *msg);
 	void handle_message_serial_control(mavlink_message_t *msg);
 	void handle_message_logging_ack(mavlink_message_t *msg);
+
+	void handle_message_cooperation(mavlink_message_t *msg);
 
 	void *receive_thread(void *arg);
 
@@ -230,6 +234,9 @@ private:
 	static const int _gps_inject_data_queue_size = 6;
 	orb_advert_t _gps_inject_data_pub;
 	orb_advert_t _command_ack_pub;
+
+	orb_advert_t _cooperation_pub;
+
 	int _control_mode_sub;
 	int _hil_frames;
 	uint64_t _old_timestamp;

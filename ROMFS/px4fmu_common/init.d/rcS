@@ -693,8 +693,8 @@ then
 	fi
 
 	# Start MAVLink
-	mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
-	#nshterm /dev/ttyACM0 &
+	#mavlink start -r 800000 -d /dev/ttyACM0 -m config -x
+	nshterm /dev/ttyACM0 &
 
 	#
 	# Logging
