@@ -30,7 +30,7 @@ then
 	else
 		ekf2 start
 	fi
-fi
+fi   
 
 # EKF
 if param compare SYS_MC_EST_GROUP 2

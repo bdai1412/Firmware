@@ -5,6 +5,10 @@
         "array": "cpp",
         "future": "cpp",
         "tuple": "cpp",
-        "iterator": "cpp"
+        "iterator": "cpp",
+        "uorb.cpp": "c",
+        "uorbmanager.hpp": "c",
+        "uorb_stub.cpp": "c",
+        "uorb.h": "c"
     }
 }
