@@ -664,6 +664,10 @@ private:
 
 	struct coupling_force_s coup_force;
 
+	math::LowPassFilter2p _lp_accff_x;
+	math::LowPassFilter2p _lp_accff_y;
+	math::LowPassFilter2p _lp_accff_z;
+
 
 	struct battery_status_s		_battery_status;
 
@@ -937,6 +941,10 @@ MulticopterPositionControl::MulticopterPositionControl() :
 	_angacc_acc{},
 	_acc_ff{},
 	_target{},
+	_lp_accff_x(13.0f, 2.0f),
+	_lp_accff_y(13.0f, 2.0f),
+	_lp_accff_z(13.0f, 2.0f),
+
 	_battery_status{},
 
 	_manual_thr_min(this, "MANTHR_MIN"),
@@ -2864,6 +2872,7 @@ MulticopterPositionControl::task_main()
 						static hrt_abstime pretimeStamp = timeNow;
 //						PX4_INFO("pos: %d, %d",_angacc_acc_updated,_angacc_acc.valid_acc);
 						if (_angacc_acc_updated && _angacc_acc.valid_acc) {
+							
 							// first time in acc feed back mode
 							if (acc_ff_flag == false ) {
 								ff_value.zero();
@@ -2881,8 +2890,17 @@ MulticopterPositionControl::task_main()
 							math::Vector<3> acc(_angacc_acc.acc_x, _angacc_acc.acc_y, _angacc_acc.acc_z - 9.806f);
 
 							float hovering_thrust = -0.0263f * _battery_status.voltage_filtered_v + 1.315f;
-							math::Vector<3> ff_delta =  (_pre_thrust_sp - acc*(hovering_thrust / 9.806f)) * (_acc_ff_a.get() * dt_acc_ff);
-							ff_delta(2) = ff_delta(2) / _acc_ff_a.get() * 2.0f;
+
+							math::Vector<3> diff =  (_pre_thrust_sp - acc*(hovering_thrust / 9.806f)) * (_acc_ff_a.get() * dt_acc_ff);
+							
+							math::Vector<3> ff_delta = diff;
+							// ff_delta(0) = _lp_accff_x.apply(diff(0));
+							// ff_delta(1) = _lp_accff_y.apply(diff(1));
+							
+							// ff_delta(2) = _lp_accff_z.apply(diff(2) / _acc_ff_a.get() * 1.5f);
+							
+							// PX4_INFO("time: %8.4f",hrt_absolute_time()*1e-6);
+
 //							mavlink_log_critical(&_mavlink_log_pub, "ff_delta:%8.4f, %8.4f, %8.4f",(double)ff_delta(0),
 //									(double)ff_delta(1),(double)ff_delta(2));
 //
