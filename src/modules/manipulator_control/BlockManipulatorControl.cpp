@@ -28,6 +28,8 @@ static orb_advert_t mavlink_log_pub = nullptr;
 static float MANI_P = 1.0f;
 static float MANI_MAX_VEL = 0.05f;
 
+bool REQUEST_RISE_UP = false;
+
 BlockManipulatorControl::BlockManipulatorControl():
 	//this block has no parent, and has name MANC
 	SuperBlock(NULL, "MANC"),
@@ -48,8 +50,7 @@ BlockManipulatorControl::BlockManipulatorControl():
 	_in_range(0),
 	_relative_rest(false),
 	_relative_rest_time(),
-	_last_info_time(0),
-	_grabbed(false)
+	_last_info_time(0)
 {
 	_polls[0].fd = _target_sub.getHandle();
 	_polls[0].events = POLLIN;
@@ -209,96 +210,102 @@ void BlockManipulatorControl::control()
 			_relative_rest = false;
 			_relative_rest_time = _timeStamp;
 		}
+		// update only UAV unrised up 
+		if (!RISED_UP) {
+			_manip_pub.get().x= mani_sp(0);
+			_manip_pub.get().y= mani_sp(1);
 
-
-		_manip_pub.get().x= mani_sp(0);
-		_manip_pub.get().y= mani_sp(1);
-
-		if (mani_sp(2) > 0.35f) {
-			mani_sp(2) = 0.35f;
-		}
-
-		_manip_pub.get().z= mani_sp(2);
-
-		/*calculate grabber velosity -bdai<19 Nov 2016>*/
-		Vector3f mani_status(_mani_status_sub.get().x,
-			_mani_status_sub.get().y, _mani_status_sub.get().z);
-		{
-			Vector3f mani_vel  = MANI_P * (mani_sp - mani_status);
-
-			if (mani_vel.norm() > MANI_MAX_VEL){
-				mani_vel = mani_vel.normalized() * MANI_MAX_VEL;
+			if (mani_sp(2) > 0.35f) {
+				mani_sp(2) = 0.35f;
 			}
 
-			_manip_pub.get().vx = mani_vel(0);
-			_manip_pub.get().vy = mani_vel(1);
-			_manip_pub.get().vz = mani_vel(2);
+			_manip_pub.get().z= mani_sp(2);
 
-		}
-
-		/*calculate grabber euler angle -bdai<17 Nov 2016>*/
-		{
-			distance = mani_sp - MANI_FIRST_JOINT;
-			Vector3f R_z(-distance.normalized());
-			Vector3f R_x = (Vector3f(.0f, .0f, 1.0f) % R_z).normalized();
-			if (R_z(2) < sinf(GRAPPER_ANGLE_RANGE[0])) {
-				Quatf q;
-				q.from_axis_angle(R_x, (float)M_PI / 2.0f - GRAPPER_ANGLE_RANGE[0]);
-				Dcmf R(q);
-				R_z = R * Vector3f(.0f, .0f, 1.0f);
-			} else if (R_z(2) > sinf(GRAPPER_ANGLE_RANGE[1])) {
-				Quatf q;
-				q.from_axis_angle(R_x, (float)M_PI / 2.0f - GRAPPER_ANGLE_RANGE[1]);
-				Dcmf R(q);
-				R_z = R * Vector3f(.0f, .0f, 1.0f);
-			}
-
-			Vector3f R_y = (R_z % R_x).normalized();
-
-			Dcmf R;
-			R.setCol(0, R_x);
-			R.setCol(1, R_y);
-			R.setCol(2, R_z);
-
-			Eulerf euler(R);
-			_manip_pub.get().roll = euler.phi();
-			_manip_pub.get().pitch = euler.theta();
-			_manip_pub.get().yaw = euler.psi();
-
-		}
-
-		/*hold on in init position -bdai<13 Nov 2016>*/
-		if (!_mani_triggered) {
-			mani_init_position();
-		}
-
-		if (_relative_rest && (_timeStamp - _relative_rest_time) > REST_DURATION)
-		{
-			_manip_pub.get().arm_enable = 1;
-		}
-
-		//grab success
-		if (_mani_status_sub.get().gripper_status == -1) {
-			_manip_pub.get().z = _manip_pub.get().z - 0.12f;
-			if (_manip_pub.get().z < 0.05f) {
-				_manip_pub.get().z = 0.05f;
-			}
-			_manip_pub.get().arm_enable = 1;
-
-			Vector3f mani_end_pos = R_att * (mani_status + MANI_OFFSET) + pos;
-			if (target_pos(2) - mani_end_pos(2) > 0.08f)
+			/*calculate grabber velosity -bdai<19 Nov 2016>*/
+			Vector3f mani_status(_mani_status_sub.get().x,
+				_mani_status_sub.get().y, _mani_status_sub.get().z);
 			{
-				if (!_grabbed){
-					usleep(1000000);
-					_grabbed = true;
+				Vector3f mani_vel  = MANI_P * (mani_sp - mani_status);
+
+				if (mani_vel.norm() > MANI_MAX_VEL){
+					mani_vel = mani_vel.normalized() * MANI_MAX_VEL;
 				}
+
+				_manip_pub.get().vx = mani_vel(0);
+				_manip_pub.get().vy = mani_vel(1);
+				_manip_pub.get().vz = mani_vel(2);
+
+			}
+
+			/*calculate grabber euler angle -bdai<17 Nov 2016>*/
+			{
+				distance = mani_sp - MANI_FIRST_JOINT;
+				Vector3f R_z(-distance.normalized());
+				Vector3f R_x = (Vector3f(.0f, .0f, 1.0f) % R_z).normalized();
+				if (R_z(2) < sinf(GRAPPER_ANGLE_RANGE[0])) {
+					Quatf q;
+					q.from_axis_angle(R_x, (float)M_PI / 2.0f - GRAPPER_ANGLE_RANGE[0]);
+					Dcmf R(q);
+					R_z = R * Vector3f(.0f, .0f, 1.0f);
+				} else if (R_z(2) > sinf(GRAPPER_ANGLE_RANGE[1])) {
+					Quatf q;
+					q.from_axis_angle(R_x, (float)M_PI / 2.0f - GRAPPER_ANGLE_RANGE[1]);
+					Dcmf R(q);
+					R_z = R * Vector3f(.0f, .0f, 1.0f);
+				}
+
+				Vector3f R_y = (R_z % R_x).normalized();
+
+				Dcmf R;
+				R.setCol(0, R_x);
+				R.setCol(1, R_y);
+				R.setCol(2, R_z);
+
+				Eulerf euler(R);
+				_manip_pub.get().roll = euler.phi();
+				_manip_pub.get().pitch = euler.theta();
+				_manip_pub.get().yaw = euler.psi();
+
+			}
+
+			/*hold on in init position -bdai<13 Nov 2016>*/
+			if (!_mani_triggered) {
 				mani_init_position();
 			}
+
+			if (_relative_rest && (_timeStamp - _relative_rest_time) > REST_DURATION)
+			{
+				_manip_pub.get().arm_enable = 1;
+			}
+
+			//grab success
+			if (_mani_status_sub.get().gripper_status == -1) {
+				bool disable_moveup = true;
+
+				if (!disable_moveup) { // else rise uav up
+					_manip_pub.get().z = _manip_pub.get().z - 0.12f;
+					if (_manip_pub.get().z < 0.05f) {
+						_manip_pub.get().z = 0.05f;
+					}
+				} else {
+					REQUEST_RISE_UP = true;
+				}
+				_manip_pub.get().arm_enable = 1;
+
+				// Vector3f mani_end_pos = R_att * (mani_status + MANI_OFFSET) + pos;
+				// if (target_pos(2) - mani_end_pos(2) > 0.08f)
+				// {
+				// 	if (!_grabbed){
+				// 		usleep(1000000);
+				// 		_grabbed = true;
+				// 	}
+				// 	mani_init_position();
+				// }
+			}
 		}
-
-
 	} else {
-		_grabbed = false;
+		// _grabbed = false;
+		REQUEST_RISE_UP = false;
 		_mani_triggered = false;
 		mani_init_position();
 		_manip_pub.get().arm_enable = 0;

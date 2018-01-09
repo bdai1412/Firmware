@@ -117,6 +117,7 @@ enum {R_max = 0, R_min, ANGLE_MIN, ANGLE_MAX};
 
 enum {MIN = 0, MAX};
 static orb_advert_t mavlink_log_pub = nullptr;
+bool RISED_UP = false;
 
 /**
  * Multicopter position control app start / stop handling function
@@ -1110,6 +1111,25 @@ void MulticopterPositionControl::control_auto(float dt)
 		_pos_sp = _pos + math::Vector<3>(err_sp(0), err_sp(1), err_sp(2));
 	} else {
 //		_pos_sp = _pos;
+	}
+
+	// rise up when grap successed --bdai
+	float rise_hight = 0.08f;
+	static hrt_abstime rise_start =  now;
+	static math::Vector<3> stop_rise_point = _pos_sp;
+
+	if (REQUEST_RISE_UP) {
+		_pos_sp(2) = _pos_sp(2) - rise_hight;
+		if ((now - rise_start) > 1500000) {
+			_pos_sp = stop_rise_point;
+			RISED_UP = true;
+		} else {
+			RISED_UP = false;
+			stop_rise_point = _pos_sp;
+		}
+	} else {
+		rise_start = now;
+		RISED_UP = false;
 	}
 
 	for (int i = 0; i < 3; i++){
