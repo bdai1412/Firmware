@@ -209,6 +209,21 @@ struct log_AIRS_s {
 	float air_temperature_celsius;
 };
 
+/* --- motion capture with velocity --- */
+#define LOG_MOCV_MSG 80
+struct log_MOCV_s {
+	float qw;
+	float qx;
+	float qy;
+	float qz;
+	float x;
+	float y;
+	float z;
+	float vx;
+	float vy;
+	float vz;
+};
+
 /* --- ARSP - ATTITUDE RATE SET POINT --- */
 #define LOG_ARSP_MSG 14
 struct log_ARSP_s {
@@ -746,6 +761,7 @@ static const struct log_format_s log_formats[] = {
 	LOG_FORMAT(ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
 	LOG_FORMAT_S(ERRY, ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
 	LOG_FORMAT_S(ERRZ, ERRX, "ffffff",  "p,p_p,v,v_p,v_i,v_d"),
+	LOG_FORMAT(MOCV, "ffffffffff", "QuatW,QuatX,QuatY,QuatZ,X,Y,Z,Vx,Vy,Vz"),
 	/* system-level messages, ID >= 0x80 */
 	/* FMT: don't write format of format message, it's useless */
 	LOG_FORMAT(TIME, "Q", "StartTime"),

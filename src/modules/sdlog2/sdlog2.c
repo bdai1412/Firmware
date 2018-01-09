@@ -115,6 +115,7 @@
 #include <uORB/topics/target_info.h>
 /*used to store pid err -bdai<20 Nov 2016>*/
 #include <uORB/topics/pid_err.h>
+#include <uORB/topics/att_pos_vel_mocap.h>
 
 #include <systemlib/systemlib.h>
 #include <systemlib/param/param.h>
@@ -1229,6 +1230,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		struct vehicle_gps_position_s dual_gps_pos;
 		// By LZ
 		struct target_info_s target_info;
+		struct att_pos_vel_mocap_s att_pos_vel_mocap;
 
 		struct pid_err_s pid_err;
 	} buf;
@@ -1298,6 +1300,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 			struct log_ERRX_s log_ERRX;
 			struct log_ERRX_s log_ERRY;
 			struct log_ERRX_s log_ERRZ;
+			struct log_MOCV_s log_MOCV;
 
 		} body;
 	} log_msg = {
@@ -1352,6 +1355,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 		int tari_sub;
 		/*bdai -bdai<20 Nov 2016>*/
 		int pid_err_sub;
+		int att_pos_vel_mocap_sub;
 	} subs;
 
 	subs.cmd_sub = -1;
@@ -1400,7 +1404,7 @@ int sdlog2_thread_main(int argc, char *argv[])
 	subs.pid_err_sub = -1;
 
 	/* add new topics HERE */
-
+	subs.att_pos_vel_mocap_sub = -1;
 
 	for (unsigned i = 0; i < ORB_MULTI_MAX_INSTANCES; i++) {
 		subs.telemetry_subs[i] = -1;
@@ -2066,6 +2070,21 @@ int sdlog2_thread_main(int argc, char *argv[])
 				log_msg.body.log_AIRS.true_airspeed = buf.airspeed.true_airspeed_m_s;
 				log_msg.body.log_AIRS.air_temperature_celsius = buf.airspeed.air_temperature_celsius;
 				LOGBUFFER_WRITE_AND_COUNT(AIRS);
+			}
+
+			if(copy_if_updated(ORB_ID(att_pos_vel_mocap), &subs.att_pos_vel_mocap_sub, &buf.att_pos_vel_mocap)) {
+				log_msg.msg_type = LOG_MOCV_MSG;
+				log_msg.body.log_MOCV.qw = buf.att_pos_vel_mocap.q[0];
+				log_msg.body.log_MOCV.qx = buf.att_pos_vel_mocap.q[1];
+				log_msg.body.log_MOCV.qy = buf.att_pos_vel_mocap.q[2];
+				log_msg.body.log_MOCV.qz = buf.att_pos_vel_mocap.q[3];
+				log_msg.body.log_MOCV.x = buf.att_pos_vel_mocap.x;
+				log_msg.body.log_MOCV.y = buf.att_pos_vel_mocap.y;
+				log_msg.body.log_MOCV.z = buf.att_pos_vel_mocap.z;
+				log_msg.body.log_MOCV.vx = buf.att_pos_vel_mocap.vx;
+				log_msg.body.log_MOCV.vy = buf.att_pos_vel_mocap.vy;
+				log_msg.body.log_MOCV.vz = buf.att_pos_vel_mocap.vz;
+				LOGBUFFER_WRITE_AND_COUNT(MOCV);
 			}
 
 			/* --- ESCs --- */
