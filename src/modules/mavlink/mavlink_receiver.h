@@ -87,6 +87,8 @@
 
 #include "mavlink_ftp.h"
 
+#include <uORB/topics/att_pos_vel_mocap.h>
+
 #define PX4_EPOCH_SECS 1234567890ULL
 
 class Mavlink;
@@ -129,6 +131,7 @@ private:
 	void handle_message_hil_optical_flow(mavlink_message_t *msg);
 	void handle_message_set_mode(mavlink_message_t *msg);
 	void handle_message_att_pos_mocap(mavlink_message_t *msg);
+	void handle_message_att_pos_vel_mocap(mavlink_message_t *msg);
 	void handle_message_vision_position_estimate(mavlink_message_t *msg);
 	void handle_message_quad_swarm_roll_pitch_yaw_thrust(mavlink_message_t *msg);
 	void handle_message_set_position_target_local_ned(mavlink_message_t *msg);
@@ -223,6 +226,7 @@ private:
 	orb_advert_t _force_sp_pub;
 	orb_advert_t _pos_sp_triplet_pub;
 	orb_advert_t _att_pos_mocap_pub;
+	orb_advert_t _att_pos_vel_mocap_pub;
 	orb_advert_t _vision_position_pub;
 	orb_advert_t _telemetry_status_pub;
 	orb_advert_t _rc_pub;
