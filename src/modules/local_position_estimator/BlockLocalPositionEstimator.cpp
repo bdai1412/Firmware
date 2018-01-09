@@ -36,7 +36,11 @@ BlockLocalPositionEstimator::BlockLocalPositionEstimator() :
 	// vision 5 hz
 	_sub_vision_pos(ORB_ID(vision_position_estimate), 1000 / 5, 0, &getSubscriptions()),
 	// all distance sensors, 10 hz
-	_sub_mocap(ORB_ID(att_pos_mocap), 1000 / 15, 0, &getSubscriptions()),
+#ifdef USING_MOCAP_VEL
+	_sub_mocap(ORB_ID(att_pos_vel_mocap), 1000 / 30, 0, &getSubscriptions()),
+#else
+	_sub_mocap(ORB_ID(att_pos_mocap), 1000 / 30, 0, &getSubscriptions()),
+#endif
 	_sub_dist0(ORB_ID(distance_sensor), 1000 / 10, 0, &getSubscriptions()),
 	_sub_dist1(ORB_ID(distance_sensor), 1000 / 10, 1, &getSubscriptions()),
 	_sub_dist2(ORB_ID(distance_sensor), 1000 / 10, 2, &getSubscriptions()),
@@ -860,6 +864,9 @@ void BlockLocalPositionEstimator::predict()
 	k4 = dynamics(h, _x + k3 * h, _u);
 	Vector<float, n_x> dx = (k1 + k2 * 2 + k3 * 2 + k4) * (h / 6);
 
+	_xLowPass.update(_x);
+	_aglLowPass.update(agl());
+	
 	// propagate
 	correctionLogic(dx);
 	_x += dx;
@@ -867,6 +874,4 @@ void BlockLocalPositionEstimator::predict()
 	_P += (_A * _P + _P * _A.transpose() +
 	       _B * _R * _B.transpose() +
 	       _Q) * getDt();
-	_xLowPass.update(_x);
-	_aglLowPass.update(agl());
 }

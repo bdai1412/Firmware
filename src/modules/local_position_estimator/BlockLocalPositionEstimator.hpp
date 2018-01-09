@@ -22,6 +22,7 @@
 #include <uORB/topics/vehicle_gps_position.h>
 #include <uORB/topics/vision_position_estimate.h>
 #include <uORB/topics/att_pos_mocap.h>
+#include <uORB/topics/att_pos_vel_mocap.h>
 
 // uORB Publications
 #include <uORB/Publication.hpp>
@@ -33,12 +34,14 @@
 /* only use mocap information -bdai<9 Nov 2016>*/
 #define ONLY_MOCAP
 
+#define USING_MOCAP_VEL
+
 using namespace matrix;
 using namespace control;
 
 static const float GPS_DELAY_MAX = 0.5f; // seconds
 static const float HIST_STEP = 0.05f; // 20 hz
-static const float BIAS_MAX = 1e-1f;
+static const float BIAS_MAX = 3e-1f;
 static const size_t HIST_LEN = 10; // GPS_DELAY_MAX / HIST_STEP;
 static const size_t N_DIST_SUBS = 4;
 
@@ -226,7 +229,11 @@ private:
 	uORB::Subscription<manual_control_setpoint_s> _sub_manual;
 	uORB::Subscription<vehicle_gps_position_s> _sub_gps;
 	uORB::Subscription<vision_position_estimate_s> _sub_vision_pos;
+#ifdef USING_MOCAP_VEL
+	uORB::Subscription<att_pos_vel_mocap_s> _sub_mocap;
+#else
 	uORB::Subscription<att_pos_mocap_s> _sub_mocap;
+#endif	
 	uORB::Subscription<distance_sensor_s> _sub_dist0;
 	uORB::Subscription<distance_sensor_s> _sub_dist1;
 	uORB::Subscription<distance_sensor_s> _sub_dist2;
