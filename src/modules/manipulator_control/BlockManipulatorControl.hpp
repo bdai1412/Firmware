@@ -36,6 +36,9 @@ using namespace control;
 
 static Vector3f MANI_OFFSET(-0.028f, -0.005f, 0.158f);
 static Vector3f MANI_FIRST_JOINT(0, 0, 0.109);
+extern bool REQUEST_RISE_UP;
+extern bool RISED_UP;
+// bool RISE_UP = false;
 
 class BlockManipulatorControl : public control::SuperBlock
 {
@@ -84,7 +87,7 @@ private:
 
 	uint64_t _last_info_time;
 
-	bool _grabbed;
+	// bool _grabbed;
 
 
 };

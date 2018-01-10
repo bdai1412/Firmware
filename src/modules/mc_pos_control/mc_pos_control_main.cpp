@@ -120,9 +120,9 @@ static float pos_sp_condition[4] = { 0.45f, 0.02f,
 		24.0f * DEG2RAD, 30.0f * DEG2RAD};
 enum {R_max = 0, R_min, ANGLE_MIN, ANGLE_MAX};
 enum {MIN = 0, MAX};
-static orb_advert_t mavlink_log_pub = nullptr;
+// static orb_advert_t mavlink_log_pub = nullptr;
 
-
+bool RISED_UP = false;
 
 namespace Path_Tracking {
 
@@ -1538,6 +1538,23 @@ MulticopterPositionControl::control_manual(float dt)
 		matrix::Vector3f target_pos(_target.x, _target.y, _target.z);
 	//	matrix::Vector3f target_pos(0.0f, 0.0f, 0.0f);
 
+		// rise up when grap successed --bdai
+		hrt_abstime now = hrt_absolute_time();
+ 		static float rise_hight = 0.20f;
+ 		static hrt_abstime rise_start =  now;
+
+ 		if (REQUEST_RISE_UP) {
+			target_pos(2) = target_pos(2) - rise_hight;
+ 			if ((now - rise_start) > 1500000) {
+ 				RISED_UP = true;
+ 			} else {
+ 				RISED_UP = false;
+ 			}
+ 		} else {
+ 			rise_start = now;
+ 			RISED_UP = false;
+ 		}
+
 		matrix::Dcmf R_BN;
 		for (int i = 0; i < 3; i++){
 			for (int j = 0; j < 3; j++){
@@ -1574,26 +1591,32 @@ MulticopterPositionControl::control_manual(float dt)
 			in_range &= 0;
 		}
 		matrix::Vector3f relative_pos_sp = -direction * pos_sp_condition[R_max];
-
+		
+		math::Vector<3> pos_sp_temp;
 		/*if current pos is not in right position -bdai<28 Nov 2016>*/
 		matrix::Vector3f err_sp = target_pos - pos_first_joint + relative_pos_sp;
 		if (err_sp.norm() > pos_sp_condition[R_min]) {
 			in_range &= 0<<2;
-			_pos_sp = _pos + math::Vector<3>(err_sp(0), err_sp(1), err_sp(2));
+			pos_sp_temp = _pos + math::Vector<3>(err_sp(0), err_sp(1), err_sp(2));
 		} else {
-	//		_pos_sp = _pos;
+			// not change pos_sp_temp
+			pos_sp_temp = _pos_sp;
 		}
 
 		for (int i = 0; i < 3; i++){
-			if (_pos_sp(i) < ELEC_FENCE[i][MIN]){
-				_pos_sp(i) = ELEC_FENCE[i][MIN];
+			if (pos_sp_temp(i) < ELEC_FENCE[i][MIN]){
+				pos_sp_temp(i) = ELEC_FENCE[i][MIN];
 				OUT_FENCE = true;
-			} else if (_pos_sp(i) > ELEC_FENCE[i][MAX]){
-				_pos_sp(i) = ELEC_FENCE[i][MAX];
+			} else if (pos_sp_temp(i) > ELEC_FENCE[i][MAX]){
+				pos_sp_temp(i) = ELEC_FENCE[i][MAX];
 				OUT_FENCE = true;
 			}
 		}
 
+		// update position only not RISED UP
+		if (!RISED_UP) {
+			_pos_sp = pos_sp_temp;
+		}
 		/*calculate yaw  -bdai<17 Nov 2016>*/
 
 		direction = (target_pos - pos).normalized();
@@ -1841,101 +1864,6 @@ void MulticopterPositionControl::control_auto(float dt)
 	// Always check reset state of altitude and position control flags in auto
 	reset_pos_sp();
 	reset_alt_sp();
-	/*used to control in motion capture system -bdai<1 Nov 2016>*/
-	#if true
-	    static uint64_t print_time = hrt_absolute_time();
-		uint64_t now = hrt_absolute_time();
-		bool print =  (now - print_time > 500000);
-	    if (print) print_time = now;
-
-	//	if (!_target_updated){
-	//		_pos_sp = _pos;
-	//		_att_sp.yaw_body = _yaw;
-	//		return;
-	//	}
-
-		/*subscribe target position -bdai<1 Nov 2016>*/
-	    matrix::Vector3f target_pos(_target.x, _target.y, _target.z);
-	//	matrix::Vector3f target_pos(0.0f, 0.0f, 0.0f);
-
-	    matrix::Dcmf R_BN;
-		for (int i = 0; i < 3; i++){
-			for (int j = 0; j < 3; j++){
-				R_BN(i,j) = _R(i,j);
-			}
-		}
-		matrix::Vector3f pos(_pos(0), _pos(1), _pos(2));
-
-	//	matrix::Vector3f pos = matrix::Vector3f(1.5f, .0f, .0f);
-	//	Quatf qq;
-	//	qq.from_axis_angle(matrix::Vector3f(.0f, 1.0f, .0f), (now - first_time)*3.0f * DEG2RAD / 1.0e6f);
-	//	matrix::Dcmf RR(qq);
-	//	pos = RR * pos - R_BN * (MANI_FIRST_JOINT + MANI_OFFSET);;
-
-		matrix::Vector3f pos_first_joint = pos +  R_BN * (MANI_FIRST_JOINT + MANI_OFFSET);
-
-		matrix::Vector3f direction = (target_pos - pos_first_joint).normalized();
-
-		matrix::Vector3f r = (matrix::Vector3f(0.0f, 0.0f, 1.0f) % direction).normalized();
-
-		int in_range = 7;
-
-		if (direction(2) < sinf(pos_sp_condition[ANGLE_MIN])) {
-			Quatf q;
-			q.from_axis_angle(r, (float)M_PI/2.0f - pos_sp_condition[ANGLE_MIN]);
-			matrix::Dcmf R(q);
-			direction = R * matrix::Vector3f(0.0f, 0.0f, 1.0f);
-			in_range &= 0<<1;
-		} else if (direction(2) > sinf(pos_sp_condition[ANGLE_MAX])){
-			Quatf q;
-			q.from_axis_angle(r, (float)M_PI/2.0f - pos_sp_condition[ANGLE_MAX]);
-			matrix::Dcmf R(q);
-			direction = R * matrix::Vector3f(0.0f, 0.0f, 1.0f);
-			in_range &= 0;
-		}
-		matrix::Vector3f relative_pos_sp = -direction * pos_sp_condition[R_max];
-
-		/*if current pos is not in right position -bdai<28 Nov 2016>*/
-		matrix::Vector3f err_sp = target_pos - pos_first_joint + relative_pos_sp;
-		if (err_sp.norm() > pos_sp_condition[R_min]) {
-			in_range &= 0<<2;
-			_pos_sp = _pos + math::Vector<3>(err_sp(0), err_sp(1), err_sp(2));
-		} else {
-	//		_pos_sp = _pos;
-		}
-
-		for (int i = 0; i < 3; i++){
-			if (_pos_sp(i) < ELEC_FENCE[i][MIN]){
-				_pos_sp(i) = ELEC_FENCE[i][MIN];
-				OUT_FENCE = true;
-			} else if (_pos_sp(i) > ELEC_FENCE[i][MAX]){
-				_pos_sp(i) = ELEC_FENCE[i][MAX];
-				OUT_FENCE = true;
-			}
-		}
-
-		/*calculate yaw  -bdai<17 Nov 2016>*/
-
-		direction = (target_pos - pos).normalized();
-		/*if there are too close with target -bdai<17 Nov 2016>*/
-		if (math::Vector<3>(direction(0), direction(1), 0).length() > sinf(15 * DEG2RAD)) {
-			_att_sp.yaw_body = atan2f(direction(1), direction(0));
-		}
-
-		print_info(print, &mavlink_log_pub, "pos_ x:%8.3f, y:%8.3f, z:%8.3f",
-					(double)pos(0), (double)pos(1), (double)pos(2));
-		print_info(print, &mavlink_log_pub, "targ x:%8.3f, y:%8.3f, z:%8.3f",
-					(double)target_pos(0), (double)target_pos(1), (double)target_pos(2));
-		print_info(print, &mavlink_log_pub, "p_sp x:%8.3f, y:%8.3f, z:%8.3f, yaw:%8.3f",
-				(double)_pos_sp(0), (double)_pos_sp(1), (double)_pos_sp(2),
-				(double)_att_sp.yaw_body);
-
-		print_info(print, &mavlink_log_pub, "in_range:%d, relpos x:%8.4f, y:%8.4f, z:%8.4f, angle:%8.4f",
-					in_range,
-					(double)relative_pos_sp(0), (double)relative_pos_sp(1), (double)relative_pos_sp(2),
-					(double)(atanf(fabs(relative_pos_sp(2) / relative_pos_sp(0))) / DEG2RAD));
-	/*original code  -bdai<1 Nov 2016>*/
-	#else
 
 	//Poll position setpoint
 	bool updated;
@@ -2133,7 +2061,6 @@ void MulticopterPositionControl::control_auto(float dt)
 	} else {
 		/* no waypoint, do nothing, setpoint was already reset */
 	}
-#endif
 }
 
 void
