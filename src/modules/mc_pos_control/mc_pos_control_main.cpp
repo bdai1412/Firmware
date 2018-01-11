@@ -115,8 +115,8 @@
 static float ELEC_FENCE[3][2] = {-2.5f, 2.5f, -2.5f, 2.5f, -0.45f -2.0f};
 static bool OUT_FENCE = false;
 /*follow mode means use velocity feed-forward control -bdai<12 Nov 2016>*/
-static bool FOLLOW_MODE = true;
-static float pos_sp_condition[4] = { 0.45f, 0.02f,
+static bool FOLLOW_MODE = false;
+static float pos_sp_condition[4] = { 0.45f, 0.025f,
 		24.0f * DEG2RAD, 30.0f * DEG2RAD};
 enum {R_max = 0, R_min, ANGLE_MIN, ANGLE_MAX};
 enum {MIN = 0, MAX};
@@ -1531,9 +1531,10 @@ MulticopterPositionControl::control_manual(float dt)
 //		}
 //	}
 
+	static bool fixed_direction_mode = false;
 
 	if(_manual.aux3 > -0.5f && _control_mode.flag_control_altitude_enabled &&_control_mode.flag_control_position_enabled){
-
+		FOLLOW_MODE = true;
 		/*subscribe target position -bdai<1 Nov 2016>*/
 		matrix::Vector3f target_pos(_target.x, _target.y, _target.z);
 	//	matrix::Vector3f target_pos(0.0f, 0.0f, 0.0f);
@@ -1591,6 +1592,19 @@ MulticopterPositionControl::control_manual(float dt)
 			direction = R * matrix::Vector3f(0.0f, 0.0f, 1.0f);
 			in_range &= 0;
 		}
+
+		static matrix::Vector3f fixed_direction = direction;
+		// now fix direction
+		if (fixed_direction_mode) {
+			direction = fixed_direction;
+		} else {
+			fixed_direction = direction;
+		}
+
+		// PX4_INFO("direction: %8.4f,%8.4f,%8.4f",(double)direction(0),(double)direction(1),(double)direction(2));
+		// PX4_INFO("fixed_dir: %8.4f,%8.4f,%8.4f",(double)fixed_direction(0),(double)fixed_direction(1),(double)fixed_direction(2));
+		// PX4_INFO("fixed_direction_mode: %d",fixed_direction_mode);		
+
 		matrix::Vector3f relative_pos_sp = -direction * pos_sp_condition[R_max];
 		
 		math::Vector<3> pos_sp_temp;
@@ -1602,6 +1616,10 @@ MulticopterPositionControl::control_manual(float dt)
 		} else {
 			// not change pos_sp_temp
 			pos_sp_temp = _pos_sp;
+		}
+
+		if (in_range == 7 && !fixed_direction_mode) {
+			fixed_direction_mode = true;
 		}
 
 		for (int i = 0; i < 3; i++){
@@ -1616,6 +1634,7 @@ MulticopterPositionControl::control_manual(float dt)
 
 
 		_pos_sp = pos_sp_temp;
+		PX4_INFO("_pos_sp: %8.4f,%8.4f,%8.4f",(double)_pos_sp(0),(double)_pos_sp(1),(double)_pos_sp(2));
 
 		/*calculate yaw  -bdai<17 Nov 2016>*/
 
@@ -1625,7 +1644,7 @@ MulticopterPositionControl::control_manual(float dt)
 			float yaw_sp = atan2f(direction(1), direction(0));
 			static float yaw_sp_last = yaw_sp;
 
-			PX4_INFO("yaw_err: %8.4f",(double)fabsf((yaw_sp -_yaw) / DEG2RAD));
+			// PX4_INFO("yaw_err: %8.4f",(double)fabsf((yaw_sp -_yaw) / DEG2RAD));
 			if (fabsf(yaw_sp -_yaw) > 10.0f * DEG2RAD) {
 				yaw_sp = _yaw + (yaw_sp -_yaw) / fabsf(yaw_sp -_yaw) * 5.0f * DEG2RAD;
 			} else if(fabsf(yaw_sp -_yaw) > 5.0f * DEG2RAD){
@@ -1634,11 +1653,12 @@ MulticopterPositionControl::control_manual(float dt)
 				yaw_sp = yaw_sp_last;
 			}
 			_att_sp.yaw_body = yaw_sp_last = yaw_sp;
-			PX4_INFO("yaw_sp: %8.4f, _yaw:%8.4f",(double)(yaw_sp / DEG2RAD), (double)(_yaw / DEG2RAD));
+			// PX4_INFO("yaw_sp: %8.4f, _yaw:%8.4f",(double)(yaw_sp / DEG2RAD), (double)(_yaw / DEG2RAD));
 		}
 	}
 	else {
-
+		fixed_direction_mode  = false;	
+		FOLLOW_MODE = false;
 		statu = DISABLE; //no path
 		math::Vector<3> req_vel_sp; // X,Y in local frame and Z in global (D), in [-1,1] normalized range
 		req_vel_sp.zero();
@@ -2330,7 +2350,7 @@ MulticopterPositionControl::task_main()
 					// PX4_INFO("XY PID: %4.4f,%4.4f,%4.4f",(double)_params.pos_p(0),(double)_params.pos_i(0),(double)_params.pos_d(0));
 
 					/*gyzhang <Jul 11, 2017>*/
-					if (_mode_auto ==  true && OUT_FENCE == false && FOLLOW_MODE == true){
+					if (OUT_FENCE == false && FOLLOW_MODE == true){
 						vel_ff(0) = _target.vx;
 						vel_ff(1) = _target.vy;
 					} else {
@@ -2392,7 +2412,7 @@ MulticopterPositionControl::task_main()
 					// PX4_INFO("Z PID: %4.4f,%4.4f,%4.4f",(double)_params.pos_p(2),(double)_params.pos_i(2),(double)_params.pos_d(2));
 
 					/*gyzhang <Jul 11, 2017>*/
-					if (_mode_auto ==  true && OUT_FENCE == false && FOLLOW_MODE == true){
+					if (true && OUT_FENCE == false && FOLLOW_MODE == true){
 						vel_ff(2) = _target.vz;
 					} else {
 						vel_ff(2) = 0;
