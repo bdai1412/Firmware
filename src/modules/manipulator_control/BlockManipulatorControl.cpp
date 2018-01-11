@@ -96,7 +96,7 @@ void BlockManipulatorControl::control()
 //	enableMani = true; //for debug
 
 	if (enableMani) {
-Vector3f pos(_pos_sub.get().x, _pos_sub.get().y, _pos_sub.get().z);
+		Vector3f pos(_pos_sub.get().x, _pos_sub.get().y, _pos_sub.get().z);
 //		pos = Vector3f(.0f, .0f, .0f); //for debug
 
 		Vector3f target_pos(_target_sub.get().x, _target_sub.get().y, _target_sub.get().z);
@@ -206,8 +206,7 @@ Vector3f pos(_pos_sub.get().x, _pos_sub.get().y, _pos_sub.get().z);
 			_relative_rest = false;
 			_relative_rest_time = _timeStamp;
 		}
-		// update only UAV unrised up 
-		if (!RISED_UP) {
+		if (!REQUEST_RISE_UP) {
 			_manip_pub.get().x= mani_sp(0);
 			_manip_pub.get().y= mani_sp(1);
 
@@ -281,9 +280,9 @@ Vector3f pos(_pos_sub.get().x, _pos_sub.get().y, _pos_sub.get().z);
 
 			//grab success
 			if (_mani_status_sub.get().gripper_status == -1) {
-				bool disable_moveup = true;
+				bool moveup = true;
 
-				if (!disable_moveup) { // else rise uav up
+				if (!moveup) { // else rise uav up
 					_manip_pub.get().z = _manip_pub.get().z - 0.12f;
 					if (_manip_pub.get().z < 0.05f) {
 						_manip_pub.get().z = 0.05f;

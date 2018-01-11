@@ -122,7 +122,7 @@ enum {R_max = 0, R_min, ANGLE_MIN, ANGLE_MAX};
 enum {MIN = 0, MAX};
 // static orb_advert_t mavlink_log_pub = nullptr;
 
-bool RISED_UP = false;
+bool RISE_UP = false;
 
 namespace Path_Tracking {
 
@@ -1541,18 +1541,19 @@ MulticopterPositionControl::control_manual(float dt)
 		// rise up when grap successed --bdai
 		hrt_abstime now = hrt_absolute_time();
  		static float rise_hight = 0.20f;
- 		static hrt_abstime rise_start =  now;
+ 		static hrt_abstime rise_delay_start =  now;
+		static hrt_abstime rise_delay_time = 800000; // waiting for manipulator grap
 
  		if (REQUEST_RISE_UP) {
-			target_pos(2) = target_pos(2) - rise_hight;
- 			if ((now - rise_start) > 1500000) {
- 				RISED_UP = true;
+ 			if ((now - rise_delay_start) > rise_delay_time) {
+				target_pos(2) = target_pos(2) - rise_hight;				 
+ 				RISE_UP = true;
  			} else {
- 				RISED_UP = false;
+ 				RISE_UP = false;
  			}
  		} else {
- 			rise_start = now;
- 			RISED_UP = false;
+ 			rise_delay_start = now;
+ 			RISE_UP = false;
  		}
 
 		matrix::Dcmf R_BN;
@@ -1613,10 +1614,9 @@ MulticopterPositionControl::control_manual(float dt)
 			}
 		}
 
-		// update position only not RISED UP
-		if (!RISED_UP) {
-			_pos_sp = pos_sp_temp;
-		}
+
+		_pos_sp = pos_sp_temp;
+
 		/*calculate yaw  -bdai<17 Nov 2016>*/
 
 		direction = (target_pos - pos).normalized();
