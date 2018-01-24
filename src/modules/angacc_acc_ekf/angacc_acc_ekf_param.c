@@ -140,3 +140,17 @@ PARAM_DEFINE_FLOAT(AAE_X_ANG_LP, 20.0f);
  * @decimal 0
  */
 PARAM_DEFINE_FLOAT(AAE_X_ACC_LP, 10.0f);
+
+
+/**
+ * Cut frequency for BlockLowPass2 of IMU acceleration
+ *
+ * @group Angular ACC Estimator
+ * @min 0
+ * @max 250
+ * @decimal 0
+ */
+PARAM_DEFINE_FLOAT(AAE_ACCX, 20.0f);
+PARAM_DEFINE_FLOAT(AAE_ACCY, 20.0f);
+PARAM_DEFINE_FLOAT(AAE_ACCZ, 20.0f);
+

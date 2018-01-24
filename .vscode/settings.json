@@ -9,6 +9,11 @@
         "uorb.cpp": "c",
         "uorbmanager.hpp": "c",
         "uorb_stub.cpp": "c",
-        "uorb.h": "c"
+        "uorb.h": "c",
+        "algorithm": "c",
+        "chrono": "c",
+        "limits": "c",
+        "functional": "cpp",
+        "utility": "cpp"
     }
 }

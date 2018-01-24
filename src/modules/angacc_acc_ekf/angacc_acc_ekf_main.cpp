@@ -22,12 +22,11 @@
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/att_pos_vel_mocap.h>
-#include <uORB/topics/sensor_gyro.h>
 // uORB Publications
 #include <uORB/topics/angacc_acc.h>
 #include <uORB/topics/att_pos_mocap.h>
 
-//#define USING_ACC
+// #define FUSION_ACC
 //#define USING_ANGACC
 
 using namespace matrix;
@@ -36,6 +35,8 @@ using namespace control;
 extern orb_advert_t mavlink_log_pub;
 
 extern "C" __EXPORT int angacc_acc_ekf_main(int argc, char *argv[]);
+
+static Vector3f G(0.0f,0.0f,9.806f);
 
 class AngaccAccEKF : public control::SuperBlock {
     // dynamics:
@@ -81,7 +82,6 @@ private:
     bool _task_should_exit;
     int _control_task;
 
-    int _sub_sensor_gyro;
     int _sub_ctrl_state;
     int _sub_param_update;
     int _sub_vel_mocap;
@@ -89,7 +89,6 @@ private:
     orb_advert_t    _pub_angacc_acc;
     orb_advert_t    _pub_fake_mocap;       //for monitoring angacc and acc estimato
 
-    struct sensor_gyro_s                _sensor_gyro;
     struct control_state_s              _ctrl_state;
     struct att_pos_vel_mocap_s     _vel_mocap;
     struct angacc_acc_s                 _angacc_acc;
@@ -143,6 +142,9 @@ private:
 
     BlockLowPassVector<float, n_rx> _x_angaccLowPass;
     BlockLowPassVector<float, n_ax> _x_accLowPass;
+    BlockLowPass2 _lowPass_IMUAccX;
+    BlockLowPass2 _lowPass_IMUAccY;
+    BlockLowPass2 _lowPass_IMUAccZ;
     /**
 	 * Update our local parameter cache.
 	 */
@@ -174,7 +176,6 @@ AngaccAccEKF::AngaccAccEKF() :
     SuperBlock(NULL,"AAE"),
     _task_should_exit(false),
     _control_task(-1),
-    _sub_sensor_gyro(-1),
     _sub_ctrl_state(-1),
     _sub_param_update(-1),
     _sub_vel_mocap(-1),
@@ -186,9 +187,11 @@ AngaccAccEKF::AngaccAccEKF() :
     _dt_acc(0.0f),
     _vel_updated(false),
 	_x_angaccLowPass(this, "X_ANG_LP"),
-	_x_accLowPass(this, "X_ACC_LP")
+	_x_accLowPass(this, "X_ACC_LP"),
+    _lowPass_IMUAccX(this, "ACCX", 250.0f),
+    _lowPass_IMUAccY(this, "ACCY", 250.0f),
+    _lowPass_IMUAccZ(this, "ACCZ", 250.0f)
 {
-    memset(&_sensor_gyro, 0, sizeof(_sensor_gyro));
     memset(&_ctrl_state, 0, sizeof(_ctrl_state));
     memset(&_vel_mocap, 0, sizeof(_vel_mocap));
     memset(&_angacc_acc, 0, sizeof(_angacc_acc));
@@ -341,7 +344,6 @@ AngaccAccEKF::task_main_trampoline(int argc, char *argv[])
 
 void AngaccAccEKF::task_main(){
     //do subscriptions
-    _sub_sensor_gyro = orb_subscribe(ORB_ID(sensor_gyro));
     _sub_ctrl_state = orb_subscribe(ORB_ID(control_state));
     _sub_param_update = orb_subscribe(ORB_ID(parameter_update));
     _sub_vel_mocap = orb_subscribe(ORB_ID(att_pos_vel_mocap));
@@ -351,7 +353,7 @@ void AngaccAccEKF::task_main(){
 
     
     px4_pollfd_struct_t fds[1];
-    fds[0].fd = _sub_sensor_gyro;
+    fds[0].fd = _sub_ctrl_state;
 	fds[0].events = POLLIN;
 
     while (!_task_should_exit) {
@@ -371,18 +373,13 @@ void AngaccAccEKF::task_main(){
 		}
 
         if (fds[0].revents & POLLIN) {
+            
             uint64_t timeStamp = hrt_absolute_time();
             _dt_ang = (timeStamp - _pre_ang_timeStamp) / 1.0e6f;
             _pre_ang_timeStamp = timeStamp;
             
-            orb_copy(ORB_ID(sensor_gyro), _sub_sensor_gyro, &_sensor_gyro);
-
-            bool updated;
-            orb_check(_sub_ctrl_state, &updated);
-            if(updated) {
-                orb_copy(ORB_ID(control_state), _sub_ctrl_state, &_ctrl_state);
-            }
-
+            orb_copy(ORB_ID(control_state), _sub_ctrl_state, &_ctrl_state);
+            bool updated = false;
             orb_check(_sub_param_update, &updated);
             if (updated) {
                 parameters_update();
@@ -393,19 +390,6 @@ void AngaccAccEKF::task_main(){
 
             _vel_updated = updated;
             if (updated) {
-
-#define TEST
-#ifdef TEST
-            static int counter = 0;
-            counter++;
-            static uint64_t pre_time_counter = timeStamp;
-            float period = (timeStamp - pre_time_counter) * 1.0e-6f;
-            if(period > 1){
-                PX4_INFO("acc_estimator update rates is: %8.4f", (double)(counter/period));
-                counter = 0;
-                pre_time_counter = timeStamp;
-            }
-#endif
                 _dt_acc = (timeStamp - _pre_acc_timeStamp) / 1.0e6f;
                 _pre_acc_timeStamp = timeStamp;
                 orb_copy(ORB_ID(att_pos_vel_mocap), _sub_vel_mocap, &_vel_mocap);
@@ -433,20 +417,43 @@ void AngaccAccEKF::task_main(){
             if(_x_accLowPass.getFCut() < 1.0e-6f) {
                 x_accLP = _x_acc;
             }
+// #ifdef USING_VEL_ONLY
             if (_vel_updated) {
-                 _fake_mocap.x = _angacc_acc.acc_x = x_accLP(X_ax);
-                 _fake_mocap.y = _angacc_acc.acc_y = x_accLP(X_ay);
-                 _fake_mocap.z = _angacc_acc.acc_z = x_accLP(X_az);
-//                 PX4_INFO("_dt_acc %8.4f", (double)_dt_acc);
+                 _fake_mocap.x = x_accLP(X_ax);
+                 _fake_mocap.y = x_accLP(X_ay);
+                 _fake_mocap.z = x_accLP(X_az);
+                // PX4_INFO("_dt_acc %8.4f", (double)_dt_acc);
             }
-            
+// #else
+            if (true) {
+                static int counter = 0;
+                counter++;
+                static uint64_t pre_time_counter = timeStamp;
+                float period = (timeStamp - pre_time_counter) * 1.0e-6f;
+                if(period > 1){
+                    PX4_INFO("acc_estimator update rates is: %8.4f", (double)(counter/period));
+                    PX4_INFO("z acc is:%8.4f",(double)_angacc_acc.acc_z);
+                    counter = 0;
+                    pre_time_counter = timeStamp;
+                }
+            }
+
+            Quaternionf q(_ctrl_state.q[0], _ctrl_state.q[1],
+                _ctrl_state.q[2], _ctrl_state.q[3]);
+            Dcmf R(q); //form body to word
+            Vector3f linear_acc = R*Vector3f(_ctrl_state.x_acc, _ctrl_state.y_acc, _ctrl_state.z_acc) + G;
+            _fake_mocap.q[3] = _angacc_acc.valid_acc = true;
+            _angacc_acc.acc_x = _lowPass_IMUAccX.update(linear_acc(0));
+            _angacc_acc.acc_y = _lowPass_IMUAccY.update(linear_acc(1));
+            _angacc_acc.acc_z = _lowPass_IMUAccZ.update(linear_acc(2));
+// #endif            
 
             if (_pub_angacc_acc == nullptr) {
                 _pub_angacc_acc = orb_advertise(ORB_ID(angacc_acc), &_angacc_acc);
             } else {
                 orb_publish(ORB_ID(angacc_acc), _pub_angacc_acc, &_angacc_acc);
             }
-// #define FAKE_MOCAP
+#define FAKE_MOCAP
 #ifdef FAKE_MOCAP
             if (_pub_fake_mocap == nullptr) {
                 _pub_fake_mocap = orb_advertise(ORB_ID(att_pos_mocap), &_fake_mocap);
@@ -502,7 +509,7 @@ void AngaccAccEKF::predict() {
 void AngaccAccEKF::correct() {
 
     Vector<float, n_ry> y_ang;
-    Vector3f rate(_sensor_gyro.x, _sensor_gyro.y, _sensor_gyro.z);
+    Vector3f rate(_ctrl_state.roll_rate, _ctrl_state.pitch_rate, _ctrl_state.yaw_rate);
     y_ang(Y_rx) = rate(0);
     y_ang(Y_ry) = rate(1);
     y_ang(Y_rz) = rate(2);
@@ -541,14 +548,11 @@ void AngaccAccEKF::correct() {
         y_acc(Y_vy) = _vel_mocap.vy;
         y_acc(Y_vz) = _vel_mocap.vz;
 
-#ifdef USING_ACC
+#ifdef FUSION_ACC
         Quaternionf q(_ctrl_state.q[0], _ctrl_state.q[1],
     					_ctrl_state.q[2], _ctrl_state.q[3]);
         Dcmf R(q); //form body to word
-        Vector<float, 3> gb = R.transpose() * Vector3f(0.0f, 0.0f, 9.806f);
-        y_acc(Y_ax) = _ctrl_state.x_acc + gb(0);
-        y_acc(Y_ay) = _ctrl_state.y_acc + gb(1);
-        y_acc(Y_az) = _ctrl_state.z_acc + gb(2);
+        y_acc = R * Vector3f(_ctrl_state.x_acc, _ctrl_state.y_acc, _ctrl_state.z_acc) + G;
 #endif
 
         Matrix<float, n_ay, n_ay> S_I_Acc = \
