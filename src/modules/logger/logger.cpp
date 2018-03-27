@@ -604,6 +604,7 @@ void Logger::add_default_topics()
 	add_topic("tecs_status", 200);
 	add_topic("telemetry_status");
 	add_topic("vehicle_attitude", 30);
+	add_topic("vehicle_attitude_euler", 30);
 	add_topic("vehicle_attitude_setpoint", 100);
 	add_topic("vehicle_command");
 	add_topic("vehicle_global_position", 200);

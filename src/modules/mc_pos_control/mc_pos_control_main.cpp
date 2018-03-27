@@ -61,6 +61,7 @@
 #include <uORB/topics/parameter_update.h>
 #include <uORB/topics/position_setpoint_triplet.h>
 #include <uORB/topics/vehicle_attitude.h>
+#include <uORB/topics/vehicle_attitude_euler.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/vehicle_control_mode.h>
 #include <uORB/topics/vehicle_land_detected.h>
@@ -147,6 +148,7 @@ private:
 	int		_home_pos_sub; 			/**< home position */
 
 	orb_advert_t	_att_sp_pub;			/**< attitude setpoint publication */
+	orb_advert_t	_att_euler_pub;
 	orb_advert_t	_local_pos_sp_pub;		/**< vehicle local position setpoint publication */
 
 	orb_id_t _attitude_setpoint_id;
@@ -155,6 +157,7 @@ private:
 	struct vehicle_land_detected_s 			_vehicle_land_detected;	/**< vehicle land detected */
 	struct vehicle_attitude_s			_att;			/**< vehicle attitude */
 	struct vehicle_attitude_setpoint_s		_att_sp;		/**< vehicle attitude setpoint */
+	struct vehicle_attitude_euler_s		_att_euler;
 	struct manual_control_setpoint_s		_manual;		/**< r/c channel data */
 	struct vehicle_control_mode_s			_control_mode;		/**< vehicle control mode */
 	struct vehicle_local_position_s			_local_pos;		/**< vehicle local position */
@@ -423,12 +426,14 @@ MulticopterPositionControl::MulticopterPositionControl() :
 
 	/* publications */
 	_att_sp_pub(nullptr),
+	_att_euler_pub(nullptr),
 	_local_pos_sp_pub(nullptr),
 	_attitude_setpoint_id(nullptr),
 	_vehicle_status{},
 	_vehicle_land_detected{},
 	_att{},
 	_att_sp{},
+	_att_euler{},
 	_manual{},
 	_control_mode{},
 	_local_pos{},
@@ -750,6 +755,18 @@ MulticopterPositionControl::poll_subscriptions()
 		math::Vector<3> euler_angles;
 		euler_angles = _R.to_euler();
 		_yaw = euler_angles(2);
+
+		_att_euler.timestamp = hrt_absolute_time();
+		_att_euler.roll = euler_angles(0);
+		_att_euler.pitch = euler_angles(1);
+		_att_euler.yaw = euler_angles(2);
+		// only for store and moditor euler angle
+		if (_att_euler_pub != nullptr) {
+			orb_publish(ORB_ID(vehicle_attitude_euler), _att_euler_pub, &_att_euler);
+
+		} else {
+			_att_euler_pub = orb_advertise(ORB_ID(vehicle_attitude_euler), &_att_euler);
+		}
 
 		if (_control_mode.flag_control_manual_enabled) {
 			if (_heading_reset_counter != _att.quat_reset_counter) {

@@ -106,6 +106,7 @@ set(msg_files
 	ulog_stream.msg
 	ulog_stream_ack.msg
 	vehicle_attitude.msg
+	vehicle_attitude_euler.msg
 	vehicle_attitude_setpoint.msg
 	vehicle_command.msg
 	vehicle_command_ack.msg
