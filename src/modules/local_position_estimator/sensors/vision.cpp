@@ -14,6 +14,8 @@ static const uint32_t		REQ_VISION_INIT_COUNT = 1;
 // set the timeout to 0.5 seconds
 static const uint32_t		VISION_TIMEOUT = 500000;	// 0.5 s
 
+static uint64_t init_sync_diff = 0;
+
 void BlockLocalPositionEstimator::visionInit()
 {
 	// measure
@@ -23,6 +25,8 @@ void BlockLocalPositionEstimator::visionInit()
 		_visionStats.reset();
 		return;
 	}
+
+	init_sync_diff = _timeStamp - _sub_vision_pos.get().timestamp;
 
 	// increament sums for mean
 	if (_visionStats.getCount() > REQ_VISION_INIT_COUNT) {
@@ -143,7 +147,7 @@ void BlockLocalPositionEstimator::visionCorrect()
 
 void BlockLocalPositionEstimator::visionCheckTimeout()
 {
-	if (_timeStamp - _time_last_vision_p > VISION_TIMEOUT) {
+	if (_timeStamp - _time_last_vision_p - init_sync_diff> VISION_TIMEOUT) {
 		if (!(_sensorTimeout & SENSOR_VISION)) {
 			_sensorTimeout |= SENSOR_VISION;
 			_visionStats.reset();
