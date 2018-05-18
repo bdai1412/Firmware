@@ -340,6 +340,10 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		handle_message_debug_vect(msg);
 		break;
 
+	case MAVLINK_MSG_ID_TEST_ADD_MESSAGE:
+		handle_message_test_mavlink_add_msg(msg);
+		break;
+
 	default:
 		break;
 	}
@@ -2389,6 +2393,24 @@ void MavlinkReceiver::handle_message_debug_vect(mavlink_message_t *msg)
 	} else {
 		orb_publish(ORB_ID(debug_vect), _debug_vect_pub, &debug_topic);
 	}
+}
+
+void MavlinkReceiver::handle_message_test_mavlink_add_msg(mavlink_message_t *msg)
+{
+	mavlink_test_add_message_t mavlink_test_msg;
+	store_test_message_fcu_s test_message = {};
+
+	mavlink_msg_test_add_message_decode(msg, &mavlink_test_msg);
+	test_message.timestamp = hrt_absolute_time();
+	test_message.counter = mavlink_test_msg.counter;
+	
+	if (_test_mavlink_add_msg_pub == nullptr) {
+		_test_mavlink_add_msg_pub = orb_advertise(ORB_ID(store_test_message_fcu), &test_message);
+
+	} else {
+		orb_publish(ORB_ID(store_test_message_fcu), _test_mavlink_add_msg_pub, &test_message);
+	}
+
 }
 
 /**

@@ -106,6 +106,9 @@
 #include <uORB/topics/sensor_gyro.h>
 #include <uORB/topics/vehicle_air_data.h>
 #include <uORB/topics/vehicle_magnetometer.h>
+
+#include <uORB/topics/store_test_message_fcu.h>
+
 #include <uORB/uORB.h>
 
 static uint16_t cm_uint16_from_m_float(float m);
@@ -4128,6 +4131,71 @@ protected:
 	}
 };
 
+class MavlinkStreamTestMavlinkAddMessage : public MavlinkStream
+{
+public:
+    const char *get_name() const
+    {
+        return MavlinkStreamTestMavlinkAddMessage::get_name_static();
+    }
+
+    static const char *get_name_static()
+    {
+		// This is the name when of mavlink stream, can open a stream as:
+		// mavlink stream -r 2 -s TEST_CUSTOM_MAVLINK_MESSAGE -u 14557
+        return "TEST_CUSTOM_MAVLINK_MESSAGE";
+    }
+
+	uint16_t get_id()
+	{
+		return get_id_static();
+	}
+
+	static uint16_t get_id_static()
+	{
+		return MAVLINK_MSG_ID_TEST_ADD_MESSAGE;
+	}
+
+    static MavlinkStream *new_instance(Mavlink *mavlink)
+    {
+        return new MavlinkStreamTestMavlinkAddMessage(mavlink);
+    }
+	
+	unsigned get_size()
+	{
+		return _sub->is_published() ? (MAVLINK_MSG_ID_TEST_ADD_MESSAGE_LEN + MAVLINK_NUM_NON_PAYLOAD_BYTES) : 0;
+	}
+
+private:
+    MavlinkOrbSubscription *_sub;
+    uint64_t _time;
+
+    /* do not allow top copying this class */
+    MavlinkStreamTestMavlinkAddMessage(MavlinkStreamTestMavlinkAddMessage &);
+    MavlinkStreamTestMavlinkAddMessage& operator = (const MavlinkStreamTestMavlinkAddMessage &);
+
+protected:
+    explicit MavlinkStreamTestMavlinkAddMessage(Mavlink *mavlink) : MavlinkStream(mavlink),
+        _sub(_mavlink->add_orb_subscription(ORB_ID(store_test_message_fcu))),  // make sure you enter the name of your uORB topic here
+        _time(0)
+    {}
+
+    bool send(const hrt_abstime t)
+    {
+        struct store_test_message_fcu_s test_message;    //make sure test_mavlink_add_message_s is the definition of your uORB topic
+
+        if (_sub->update(&_time, &test_message)) {
+            mavlink_test_add_message_t test_msg = {};  //make sure mavlink_test_add_message_t is the definition of your custom MAVLink message
+            test_msg.counter = test_message.counter + 1;
+            mavlink_msg_test_add_message_send_struct(_mavlink->get_channel(), &test_msg);
+
+			return true;
+		}
+
+		return false;
+    }
+};
+
 static const StreamListItem streams_list[] = {
 	StreamListItem(&MavlinkStreamHeartbeat::new_instance, &MavlinkStreamHeartbeat::get_name_static, &MavlinkStreamHeartbeat::get_id_static),
 	StreamListItem(&MavlinkStreamStatustext::new_instance, &MavlinkStreamStatustext::get_name_static, &MavlinkStreamStatustext::get_id_static),
@@ -4179,7 +4247,9 @@ static const StreamListItem streams_list[] = {
 	StreamListItem(&MavlinkStreamMountOrientation::new_instance, &MavlinkStreamMountOrientation::get_name_static, &MavlinkStreamMountOrientation::get_id_static),
 	StreamListItem(&MavlinkStreamHighLatency2::new_instance, &MavlinkStreamHighLatency2::get_name_static, &MavlinkStreamHighLatency2::get_id_static),
 	StreamListItem(&MavlinkStreamGroundTruth::new_instance, &MavlinkStreamGroundTruth::get_name_static, &MavlinkStreamGroundTruth::get_id_static),
-	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static)
+	StreamListItem(&MavlinkStreamPing::new_instance, &MavlinkStreamPing::get_name_static, &MavlinkStreamPing::get_id_static),
+
+	StreamListItem(&MavlinkStreamTestMavlinkAddMessage::new_instance, &MavlinkStreamTestMavlinkAddMessage::get_name_static, &MavlinkStreamTestMavlinkAddMessage::get_id_static)
 };
 
 const char *get_stream_name(const uint16_t msg_id)

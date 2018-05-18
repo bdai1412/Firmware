@@ -62,7 +62,14 @@ mc_pos_control start
 mc_att_control start
 mixer load /dev/pwm_output0 ROMFS/px4fmu_common/mixers/quad_w.main.mix
 mavlink start -x -u 14556 -r 4000000
+
+# enable udp communication with mavros and send custom mavlink stream
 mavlink start -x -u 14557 -r 4000000 -m onboard -o 14540
+mavlink stream -r 50 -s TEST_CUSTOM_MAVLINK_MESSAGE -u 14557
+# if using serial instead of udp, then
+# mavlink start -d /dev/ttyS* -b 57600
+# mavlink stream -r 2 -s TEST_CUSTOM_MAVLINK_MESSAGE -d /dev/ttyS*
+
 mavlink stream -r 50 -s POSITION_TARGET_LOCAL_NED -u 14556
 mavlink stream -r 50 -s LOCAL_POSITION_NED -u 14556
 mavlink stream -r 50 -s GLOBAL_POSITION_INT -u 14556

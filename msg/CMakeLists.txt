@@ -129,6 +129,10 @@ set(msg_files
 	vehicle_status_flags.msg
 	vtol_vehicle_status.msg
 	wind_estimate.msg
+
+	# generate topic to store added mavlink message
+	store_test_message_fcu.msg
+
 	)
 
 if(NOT EXTERNAL_MODULES_LOCATION STREQUAL "")
