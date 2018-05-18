@@ -4187,6 +4187,7 @@ protected:
         if (_sub->update(&_time, &test_message)) {
             mavlink_test_add_message_t test_msg = {};  //make sure mavlink_test_add_message_t is the definition of your custom MAVLink message
             test_msg.counter = test_message.counter + 1;
+			PX4_INFO("Sending counter to Mavros: %lld", test_msg.counter);
             mavlink_msg_test_add_message_send_struct(_mavlink->get_channel(), &test_msg);
 
 			return true;

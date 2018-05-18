@@ -2403,6 +2403,7 @@ void MavlinkReceiver::handle_message_test_mavlink_add_msg(mavlink_message_t *msg
 	mavlink_msg_test_add_message_decode(msg, &mavlink_test_msg);
 	test_message.timestamp = hrt_absolute_time();
 	test_message.counter = mavlink_test_msg.counter;
+	PX4_INFO("Received counter from mavros: %llu", test_message.counter);
 	
 	if (_test_mavlink_add_msg_pub == nullptr) {
 		_test_mavlink_add_msg_pub = orb_advertise(ORB_ID(store_test_message_fcu), &test_message);
