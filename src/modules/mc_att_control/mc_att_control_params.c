@@ -590,3 +590,11 @@ PARAM_DEFINE_FLOAT(MC_DTERM_CUTOFF, 30.f);
  */
 PARAM_DEFINE_INT32(MC_AIRMODE, 0);
 
+/**
+ * Use GY520 for yaw rate control -- flag
+ *
+ * 1 --> use GY520 for yaw rate control
+ * 0 --> use pixhawk for yaw rate control
+ * @group Helicopter Attitude Control
+ */
+PARAM_DEFINE_FLOAT(MC_GY520, 1.0f);

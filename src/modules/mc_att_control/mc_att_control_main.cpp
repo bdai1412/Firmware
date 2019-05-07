@@ -197,6 +197,8 @@ MulticopterAttitudeControl::parameters_updated()
 			M_DEG_TO_RAD_F * _board_offset_y.get(),
 			M_DEG_TO_RAD_F * _board_offset_z.get()));
 	_board_rotation = board_rotation_offset * _board_rotation;
+
+	_gy520_flag = _gy520.get();
 }
 
 void
@@ -582,6 +584,12 @@ MulticopterAttitudeControl::control_attitude_rates(float dt)
 	for (int i = AXIS_INDEX_ROLL; i < AXIS_COUNT; i++) {
 		_rates_int(i) = math::constrain(_rates_int(i), -_rate_int_lim(i), _rate_int_lim(i));
 
+	}
+
+	/* use GY520 for yaw rate control */
+	if(_gy520_flag > 0.9f) {
+		_att_control(2) = _rates_sp(2);
+		_rates_int(2) = 0.0f;              /* remove integral */
 	}
 }
 
