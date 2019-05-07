@@ -36,10 +36,10 @@ px4_add_romfs_files(
 	AAVVTWFF.main.mix
 	AERT.main.mix
 	AETRFG.main.mix
-	align800old.main.mix
+	align800ccpm.main.mix
 	align800.main.mix
 	bebop.main.mix
-	blade.main.mix
+	blade130.main.mix
 	caipi.main.mix
 	caipirinha_vtol.main.mix
 	CCPM.main.mix
